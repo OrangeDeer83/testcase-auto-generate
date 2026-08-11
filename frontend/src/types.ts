@@ -1,0 +1,34 @@
+export interface TestStep {
+  step_no: number
+  description: string
+  expected_result: string
+}
+
+export interface TestCase {
+  name: string
+  preconditions: string
+  steps: TestStep[]
+  priority: string
+}
+
+export interface ClarificationQuestion {
+  id: string
+  question: string
+  context: string
+}
+
+export interface GenerationResult {
+  test_cases: TestCase[]
+  clarification_questions: ClarificationQuestion[]
+}
+
+export interface QAAnswer {
+  question_id: string
+  question: string
+  answer: string
+}
+
+export interface UploadedMaterial {
+  filename: string
+  kind: 'text' | 'image'
+}
