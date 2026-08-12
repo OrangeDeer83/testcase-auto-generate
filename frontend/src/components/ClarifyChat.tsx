@@ -41,6 +41,15 @@ export function ClarifyChat({ log, currentQuestion, busy, onAnswer }: ClarifyCha
             )}
           </div>
         ))}
+
+        {currentQuestion && (
+          <div>
+            <div className="chat-bubble question">{currentQuestion.question}</div>
+            {currentQuestion.context && (
+              <div className="chat-bubble context">依據：{currentQuestion.context}</div>
+            )}
+          </div>
+        )}
       </div>
 
       {currentQuestion && (
