@@ -239,6 +239,7 @@ table.testcase-table textarea {
   font-family: inherit;
   font-size: 0.85rem;
   background: transparent;
+  transition: background-color 1.2s ease;
 }
 
 table.testcase-table input:focus,
@@ -247,11 +248,28 @@ table.testcase-table textarea:focus {
   background: #fff;
 }
 
+.cell-highlight,
+table.testcase-table input.cell-highlight,
+table.testcase-table textarea.cell-highlight {
+  background-color: #fff3b0 !important;
+}
+
+tr.cell-highlight td {
+  background-color: #fff3b0;
+  transition: background-color 1.2s ease;
+}
+
 .case-card {
   border: 1px solid #e2e4e9;
   border-radius: 8px;
   padding: 14px 16px;
   margin-bottom: 18px;
+  transition: background-color 1.2s ease, box-shadow 1.2s ease;
+}
+
+.case-card.cell-highlight {
+  background-color: #fffaeb;
+  box-shadow: 0 0 0 2px #ffd666;
 }
 
 .case-card-header {

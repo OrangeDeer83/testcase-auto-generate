@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   addTextMaterial,
   createSession,
@@ -11,8 +11,10 @@ import { ChatPanel } from './components/ChatPanel'
 import { ExportButton } from './components/ExportButton'
 import { TestCaseTable } from './components/TestCaseTable'
 import { UploadPanel, type TextMaterialDraft } from './components/UploadPanel'
-import { diffTestCases } from './diffTestCases'
+import { diffTestCases, getChangedCellKeys } from './diffTestCases'
 import type { ChatMessage, GenerationResult, UploadedMaterial } from './types'
+
+const HIGHLIGHT_DURATION_MS = 6000
 
 type Stage = 'upload' | 'workspace'
 
@@ -40,6 +42,13 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<GenerationResult | null>(null)
   const [chatLog, setChatLog] = useState<ChatMessage[]>([])
+  const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (highlightedKeys.size === 0) return
+    const timer = setTimeout(() => setHighlightedKeys(new Set()), HIGHLIGHT_DURATION_MS)
+    return () => clearTimeout(timer)
+  }, [highlightedKeys])
 
   const ensureSession = async (): Promise<string> => {
     if (sessionId) return sessionId
@@ -127,6 +136,7 @@ export default function App() {
           ? [{ role: 'assistant', content: `本次變動：\n${changes.map((c) => `・${c}`).join('\n')}` }]
           : []
 
+      setHighlightedKeys(getChangedCellKeys(beforeTestCases, res.test_cases))
       setChatLog((prev) => [...prev, ...changeSummary, ...describeResult(res)])
     } catch (err) {
       setError(err instanceof Error ? err.message : '送出訊息失敗')
@@ -158,6 +168,7 @@ export default function App() {
           <TestCaseTable
             testCases={result.test_cases}
             onChange={(testCases) => setResult({ ...result, test_cases: testCases })}
+            highlightedKeys={highlightedKeys}
           />
           <ExportButton sessionId={sessionId} result={result} onError={setError} />
         </>

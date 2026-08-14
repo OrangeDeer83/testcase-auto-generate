@@ -65,3 +65,45 @@ export function diffTestCases(before: TestCase[], after: TestCase[]): string[] {
 
   return changes
 }
+
+/**
+ * 比對聊天前後的測試用例，回傳「哪些具體儲存格變了」的 key 集合，供表格畫面上高亮顯示用。
+ * key 是以 after 陣列（也就是聊天後、目前畫面在顯示的陣列）的索引為準：
+ *   case:<caseIndex>                                整筆用例是新增的
+ *   case:<caseIndex>:priority                        優先級變了
+ *   case:<caseIndex>:preconditions                   前置條件變了
+ *   case:<caseIndex>:step:<stepIndex>                 整個步驟是新增的
+ *   case:<caseIndex>:step:<stepIndex>:description     步驟描述變了
+ *   case:<caseIndex>:step:<stepIndex>:expected_result 預期結果變了
+ */
+export function getChangedCellKeys(before: TestCase[], after: TestCase[]): Set<string> {
+  const keys = new Set<string>()
+  const beforeByName = new Map(before.map((tc) => [tc.name, tc]))
+
+  after.forEach((tc, caseIndex) => {
+    const prev = beforeByName.get(tc.name)
+    if (!prev) {
+      keys.add(`case:${caseIndex}`)
+      return
+    }
+
+    if (prev.priority !== tc.priority) keys.add(`case:${caseIndex}:priority`)
+    if (prev.preconditions !== tc.preconditions) keys.add(`case:${caseIndex}:preconditions`)
+
+    tc.steps.forEach((step, stepIndex) => {
+      const prevStep = prev.steps[stepIndex]
+      if (!prevStep) {
+        keys.add(`case:${caseIndex}:step:${stepIndex}`)
+        return
+      }
+      if (prevStep.description !== step.description) {
+        keys.add(`case:${caseIndex}:step:${stepIndex}:description`)
+      }
+      if (prevStep.expected_result !== step.expected_result) {
+        keys.add(`case:${caseIndex}:step:${stepIndex}:expected_result`)
+      }
+    })
+  })
+
+  return keys
+}
