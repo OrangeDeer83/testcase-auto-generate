@@ -4,6 +4,7 @@ interface TestCaseTableProps {
   testCases: TestCase[]
   onChange: (testCases: TestCase[]) => void
   highlightedKeys?: Set<string>
+  onFieldFocus?: (keys: string[]) => void
 }
 
 function emptyStep(stepNo: number): TestStep {
@@ -14,8 +15,14 @@ function emptyCase(): TestCase {
   return { name: '新測試用例', preconditions: '', priority: 'P2', steps: [emptyStep(1)] }
 }
 
-export function TestCaseTable({ testCases, onChange, highlightedKeys }: TestCaseTableProps) {
+export function TestCaseTable({
+  testCases,
+  onChange,
+  highlightedKeys,
+  onFieldFocus,
+}: TestCaseTableProps) {
   const isHighlighted = (key: string) => highlightedKeys?.has(key) ?? false
+  const focusClears = (keys: string[]) => () => onFieldFocus?.(keys)
   const updateCase = (index: number, patch: Partial<TestCase>) => {
     const next = testCases.slice()
     next[index] = { ...next[index], ...patch }
@@ -67,6 +74,7 @@ export function TestCaseTable({ testCases, onChange, highlightedKeys }: TestCase
               className="name-input"
               value={testCase.name}
               onChange={(e) => updateCase(caseIndex, { name: e.target.value })}
+              onFocus={focusClears([`case:${caseIndex}`])}
               placeholder="用例名稱"
             />
             <button className="secondary" onClick={() => removeCase(caseIndex)}>
@@ -81,6 +89,7 @@ export function TestCaseTable({ testCases, onChange, highlightedKeys }: TestCase
                 className={isHighlighted(`case:${caseIndex}:priority`) ? 'cell-highlight' : ''}
                 value={testCase.priority}
                 onChange={(e) => updateCase(caseIndex, { priority: e.target.value })}
+                onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:priority`])}
                 style={{ width: 80 }}
               />
             </label>
@@ -90,6 +99,7 @@ export function TestCaseTable({ testCases, onChange, highlightedKeys }: TestCase
                 className={isHighlighted(`case:${caseIndex}:preconditions`) ? 'cell-highlight' : ''}
                 value={testCase.preconditions}
                 onChange={(e) => updateCase(caseIndex, { preconditions: e.target.value })}
+                onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:preconditions`])}
               />
             </label>
           </div>
@@ -121,6 +131,11 @@ export function TestCaseTable({ testCases, onChange, highlightedKeys }: TestCase
                         onChange={(e) =>
                           updateStep(caseIndex, stepIndex, { description: e.target.value })
                         }
+                        onFocus={focusClears([
+                          `case:${caseIndex}`,
+                          stepKey,
+                          `${stepKey}:description`,
+                        ])}
                       />
                     </td>
                     <td>
@@ -134,6 +149,11 @@ export function TestCaseTable({ testCases, onChange, highlightedKeys }: TestCase
                         onChange={(e) =>
                           updateStep(caseIndex, stepIndex, { expected_result: e.target.value })
                         }
+                        onFocus={focusClears([
+                          `case:${caseIndex}`,
+                          stepKey,
+                          `${stepKey}:expected_result`,
+                        ])}
                       />
                     </td>
                     <td>

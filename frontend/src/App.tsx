@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   addTextMaterial,
   createSession,
@@ -13,8 +13,6 @@ import { TestCaseTable } from './components/TestCaseTable'
 import { UploadPanel, type TextMaterialDraft } from './components/UploadPanel'
 import { diffTestCases, getChangedCellKeys } from './diffTestCases'
 import type { ChatMessage, GenerationResult, UploadedMaterial } from './types'
-
-const HIGHLIGHT_DURATION_MS = 6000
 
 type Stage = 'upload' | 'workspace'
 
@@ -44,11 +42,14 @@ export default function App() {
   const [chatLog, setChatLog] = useState<ChatMessage[]>([])
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    if (highlightedKeys.size === 0) return
-    const timer = setTimeout(() => setHighlightedKeys(new Set()), HIGHLIGHT_DURATION_MS)
-    return () => clearTimeout(timer)
-  }, [highlightedKeys])
+  const clearHighlight = (keys: string[]) => {
+    setHighlightedKeys((prev) => {
+      if (keys.every((key) => !prev.has(key))) return prev
+      const next = new Set(prev)
+      keys.forEach((key) => next.delete(key))
+      return next
+    })
+  }
 
   const ensureSession = async (): Promise<string> => {
     if (sessionId) return sessionId
@@ -169,6 +170,7 @@ export default function App() {
             testCases={result.test_cases}
             onChange={(testCases) => setResult({ ...result, test_cases: testCases })}
             highlightedKeys={highlightedKeys}
+            onFieldFocus={clearHighlight}
           />
           <ExportButton sessionId={sessionId} result={result} onError={setError} />
         </>
