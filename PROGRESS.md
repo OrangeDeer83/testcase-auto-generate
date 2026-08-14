@@ -18,6 +18,7 @@
 - [x] 素材加上唯一 id，新增 `DELETE /materials/{id}` 端點供刪除
 - [x] 修正 `/chat` 遺失上一輪待釐清問題的重大 bug：`/generate` 沒把問題寫進對話紀錄，導致模型完全不知道之前問過什麼，實測會把所有問題都默默清空（即使只回答了其中一個）。改成明確把 `session.last_result.clarification_questions` 傳給模型，並要求逐一核對使用者是否真的回答到；重跑測試（4 題只答 1 題）確認其餘 3 題正確保留
 - [x] 加上 debug log（`backend/logs/app.log`，不進 git）：記錄每次呼叫模型的 session id、送出內容摘要、原始回應、結果摘要，之後結果不符預期可以直接翻 log 對照，不用重新操作重現
+- [x] 新增 `GET /sessions/{id}/materials`，回傳完整素材內容（文字/圖片 data URL），供前端「查看一開始的素材」功能使用
 
 ## 前端
 - [x] Vite + React + TS 專案骨架（npm install / tsc -b / npm run build 皆通過）
@@ -36,6 +37,7 @@
 - [x] 修正聊天訊息沒有依角色左右對齊的 bug：包住「泡泡+依據」的 wrapper div 沒設定 flex 對齊，導致裡面 `.chat-bubble` 的 `align-self` 完全沒作用；改成 wrapper 本身當 flex item 依角色設定對齊
 - [x] 聊天回覆後顯示測試用例的實際變動摘要（`diffTestCases.ts`，純前端依用例名稱比對前後差異），瀏覽器實測正確顯示「優先級從 P0 改成 P1、步驟 1、2 的內容有調整」
 - [x] 表格中高亮顯示本次聊天變動的具體儲存格（`getChangedCellKeys`），淡黃色底，持續到使用者點進該欄位才消失（不是倒數計時），瀏覽器實測畫面高亮位置與文字摘要一致
+- [x] workspace 階段改成左右並排（聊天固定在左邊、內部獨立捲動，不用每次都手動拉到最下面）；新增「查看一開始的素材」modal；表格高亮欄位下方用灰字顯示「原本：xxx」舊值；聊天造成用例變動時自動捲動到第一個變動處。瀏覽器實測四項皆正常運作
 
 ## 待確認 / 開放項目
 - PPT 檔案支援尚未實作，列為未來擴充。
