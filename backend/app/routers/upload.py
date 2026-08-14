@@ -28,7 +28,7 @@ async def upload_materials(session_id: str, files: list[UploadFile] = File(...))
         except UnsupportedFileTypeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         session.materials.append(material)
-        uploaded.append({"filename": material.filename, "kind": material.kind})
+        uploaded.append({"id": material.id, "filename": material.filename, "kind": material.kind})
 
     return {"uploaded": uploaded, "total_materials": len(session.materials)}
 
@@ -53,6 +53,20 @@ def add_text_material(session_id: str, payload: TextMaterialPayload):
     session.materials.append(material)
 
     return {
-        "uploaded": [{"filename": material.filename, "kind": material.kind}],
+        "uploaded": [{"id": material.id, "filename": material.filename, "kind": material.kind}],
         "total_materials": len(session.materials),
     }
+
+
+@router.delete("/sessions/{session_id}/materials/{material_id}")
+def delete_material(session_id: str, material_id: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session 不存在或已過期")
+
+    before = len(session.materials)
+    session.materials = [m for m in session.materials if m.id != material_id]
+    if len(session.materials) == before:
+        raise HTTPException(status_code=404, detail="找不到這個素材")
+
+    return {"total_materials": len(session.materials)}
