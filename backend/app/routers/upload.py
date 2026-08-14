@@ -14,6 +14,14 @@ def create_new_session():
     return {"session_id": session.id}
 
 
+@router.get("/sessions/{session_id}/materials", response_model=list[ParsedMaterial])
+def list_materials(session_id: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session 不存在或已過期")
+    return session.materials
+
+
 @router.post("/sessions/{session_id}/materials")
 async def upload_materials(session_id: str, files: list[UploadFile] = File(...)):
     session = get_session(session_id)
