@@ -25,9 +25,12 @@ export interface GenerationResult {
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  context?: string
+  imageUrl?: string
 }
 
 export interface UploadedMaterial {
+  id: string
   filename: string
   kind: 'text' | 'image'
 }

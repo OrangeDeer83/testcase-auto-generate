@@ -21,10 +21,17 @@ interface UploadPanelProps {
   materials: UploadedMaterial[]
   busy: boolean
   onUpload: (files: File[]) => void
+  onRemoveMaterial: (id: string) => void
   onGenerate: (textMaterials: TextMaterialDraft[]) => void
 }
 
-export function UploadPanel({ materials, busy, onUpload, onGenerate }: UploadPanelProps) {
+export function UploadPanel({
+  materials,
+  busy,
+  onUpload,
+  onRemoveMaterial,
+  onGenerate,
+}: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [textFields, setTextFields] = useState<TextField[]>(() => [{ id: 1, value: '' }])
 
@@ -102,9 +109,18 @@ export function UploadPanel({ materials, busy, onUpload, onGenerate }: UploadPan
 
       {materials.length > 0 && (
         <ul className="material-list">
-          {materials.map((material, idx) => (
-            <li key={`${material.filename}-${idx}`}>
-              {material.kind === 'image' ? '🖼️' : '📄'} {material.filename}
+          {materials.map((material) => (
+            <li key={material.id}>
+              <span>
+                {material.kind === 'image' ? '🖼️' : '📄'} {material.filename}
+              </span>
+              <button
+                className="secondary material-remove"
+                disabled={busy}
+                onClick={() => onRemoveMaterial(material.id)}
+              >
+                刪除
+              </button>
             </li>
           ))}
         </ul>

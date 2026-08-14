@@ -43,6 +43,14 @@ export async function addTextMaterial(
   return handleResponse(response)
 }
 
+export async function deleteMaterial(sessionId: string, materialId: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/sessions/${sessionId}/materials/${materialId}`,
+    { method: 'DELETE' },
+  )
+  await handleResponse(response)
+}
+
 export async function generate(sessionId: string): Promise<GenerationResult> {
   const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/generate`, {
     method: 'POST',

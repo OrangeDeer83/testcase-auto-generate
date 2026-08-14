@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import { addTextMaterial, createSession, generate, sendChatMessage, uploadMaterials } from './api'
+import {
+  addTextMaterial,
+  createSession,
+  deleteMaterial,
+  generate,
+  sendChatMessage,
+  uploadMaterials,
+} from './api'
 import { ChatPanel } from './components/ChatPanel'
 import { ExportButton } from './components/ExportButton'
 import { TestCaseTable } from './components/TestCaseTable'
@@ -12,7 +19,8 @@ function describeResult(result: GenerationResult): ChatMessage[] {
   if (result.clarification_questions.length > 0) {
     return result.clarification_questions.map((q) => ({
       role: 'assistant' as const,
-      content: q.context ? `${q.question}\n依據：${q.context}` : q.question,
+      content: q.question,
+      context: q.context || undefined,
     }))
   }
   return [
@@ -53,6 +61,17 @@ export default function App() {
     }
   }
 
+  const handleRemoveMaterial = async (id: string) => {
+    if (!sessionId) return
+    setError(null)
+    try {
+      await deleteMaterial(sessionId, id)
+      setMaterials((prev) => prev.filter((m) => m.id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '刪除素材失敗')
+    }
+  }
+
   const handleGenerate = async (textMaterials: TextMaterialDraft[]) => {
     setBusy(true)
     setError(null)
@@ -73,13 +92,27 @@ export default function App() {
     }
   }
 
-  const handleSendMessage = async (message: string) => {
+  const handleSendMessage = async (message: string, image?: File) => {
     if (!sessionId || !result) return
-    setChatLog((prev) => [...prev, { role: 'user', content: message }])
     setBusy(true)
     setError(null)
     try {
-      const res = await sendChatMessage(sessionId, message, result.test_cases)
+      let finalMessage = message
+      let imageUrl: string | undefined
+
+      if (image) {
+        const uploadRes = await uploadMaterials(sessionId, [image])
+        setMaterials((prev) => [...prev, ...uploadRes.uploaded])
+        const label = uploadRes.uploaded[0]?.filename ?? image.name
+        finalMessage = message
+          ? `${message}（已附上圖片：${label}）`
+          : `（附上圖片：${label}，請參考圖片內容回答）`
+        imageUrl = URL.createObjectURL(image)
+      }
+
+      setChatLog((prev) => [...prev, { role: 'user', content: message || '（附上圖片）', imageUrl }])
+
+      const res = await sendChatMessage(sessionId, finalMessage, result.test_cases)
       setResult(res)
       setChatLog((prev) => [...prev, ...describeResult(res)])
     } catch (err) {
@@ -101,6 +134,7 @@ export default function App() {
           materials={materials}
           busy={busy}
           onUpload={handleUpload}
+          onRemoveMaterial={handleRemoveMaterial}
           onGenerate={handleGenerate}
         />
       )}
