@@ -1,7 +1,7 @@
 import json
 
 from app.models.material import ParsedMaterial
-from app.models.test_case import ChatMessage, GenerationResult, TestCase
+from app.models.test_case import ChatMessage, ClarificationQuestion, GenerationResult, TestCase
 
 SYSTEM_PROMPT = """你是一位資深 QA 測試工程師，任務是根據使用者提供的需求文件、UI 截圖與 API 文件，撰寫測試用例。
 
@@ -35,13 +35,15 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
 你會收到：
 1. 原始素材（需求文件、UI 截圖等）
 2. 目前的測試用例清單（JSON，可能包含使用者手動編輯過的內容）
-3. 先前的對話紀錄
-4. 使用者最新的訊息
+3. 目前尚未解決的澄清問題清單（如果有的話——這是你上一輪提出、使用者這次應該要回應的問題）
+4. 先前的對話紀錄
+5. 使用者最新的訊息
 
 使用者的最新訊息可能是：
 - 回答你先前提出的澄清問題
 - 要求新增、修改或刪除測試用例或測試步驟（可能一次影響多筆用例）
 - 補充規格中原本缺少的資訊
+- 表明不需要處理某個先前提出的問題（例如「不管這個」「先跳過」「這個不重要」）
 
 請根據使用者最新的訊息，更新測試用例清單，並回傳與產生測試用例時相同格式的 JSON：
 {
@@ -65,8 +67,13 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
 2. 使用者沒有要求變動的測試用例，請維持原樣（包含使用者手動編輯過的內容），不要無故整批重寫或改變順序，除非使用者明確要求。
 3. 使用者要求新增用例、修改步驟、調整優先級、刪除用例等，直接反映在回傳的 test_cases 陣列中；務必回傳完整的 test_cases 陣列，不是只回傳被修改的部分。
 4. 若目前的測試用例清單是空的（尚未產生過任何用例），請依素材與使用者訊息從頭產生完整用例清單，比照上述相同規則。
-5. 所有文字使用繁體中文。
-6. 只回傳 JSON 本身。
+5. 逐一檢查「目前尚未解決的澄清問題清單」裡的每一個問題，判斷使用者最新的訊息有沒有真正回答到它：
+   - 有明確回答到的，把答案套用到對應的測試用例，並且不要再把這個問題放進回傳的 clarification_questions。
+   - 沒有回答到的（例如使用者只回答了其中幾個問題、講了不相關的事、或訊息內容答非所問），這個問題必須**原封不動**保留在回傳的 clarification_questions 中再次提出，絕對不可以因為使用者這次沒提到就默默拿掉、當作已解決，也不可以自己編個答案來讓問題消失。
+   - 只有當使用者對某個問題明確表示不需要處理時（例如「不管這個」「先跳過」「這個不重要」「不需要」「不用管」），才可以把那個問題從 clarification_questions 移除，並在對應的測試用例中維持原本已知的資訊，不要自行補上答案。
+   - 使用者的訊息如果同時包含新的疑慮或指示，除了處理上述判斷之外，也要正常反映在 test_cases 或新的 clarification_questions 上。
+6. 所有文字使用繁體中文。
+7. 只回傳 JSON 本身。
 """
 
 
@@ -93,6 +100,7 @@ def build_messages(materials: list[ParsedMaterial]) -> list[dict]:
 def build_chat_messages(
     materials: list[ParsedMaterial],
     current_test_cases: list[TestCase],
+    pending_questions: list[ClarificationQuestion],
     chat_history: list[ChatMessage],
     latest_message: str,
 ) -> list[dict]:
@@ -102,6 +110,21 @@ def build_chat_messages(
         [tc.model_dump() for tc in current_test_cases], ensure_ascii=False
     )
     user_content.append({"type": "text", "text": f"目前的測試用例清單（JSON）：\n{test_cases_json}"})
+
+    if pending_questions:
+        questions_text = "\n".join(
+            f"- [{q.id}] {q.question}（依據：{q.context}）" if q.context else f"- [{q.id}] {q.question}"
+            for q in pending_questions
+        )
+        user_content.append(
+            {
+                "type": "text",
+                "text": (
+                    "目前尚未解決的澄清問題清單（請逐一確認使用者最新的訊息是否有回答到，"
+                    "沒回答到的要保留在你回傳的 clarification_questions 中再次提出）：\n" + questions_text
+                ),
+            }
+        )
 
     if chat_history:
         history_text = "\n".join(

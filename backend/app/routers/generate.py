@@ -59,11 +59,13 @@ def chat(session_id: str, payload: ChatPayload):
     if not session.materials:
         raise HTTPException(status_code=400, detail="尚未上傳任何素材")
 
+    pending_questions = session.last_result.clarification_questions if session.last_result else []
+
     prior_history = list(session.chat_history)
     session.chat_history.append(ChatMessage(role="user", content=payload.message))
 
     messages = build_chat_messages(
-        session.materials, payload.current_test_cases, prior_history, payload.message
+        session.materials, payload.current_test_cases, pending_questions, prior_history, payload.message
     )
     raw_response = chat_completion(messages)
 
