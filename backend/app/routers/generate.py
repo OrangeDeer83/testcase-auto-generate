@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.session import Session
-from app.models.test_case import GenerationResult, QAAnswer
+from app.models.test_case import ChatMessage, GenerationResult, TestCase
 from app.services.llm_client import chat_completion
 from app.services.prompt_builder import (
     LLMResponseParseError,
+    build_chat_messages,
     build_messages,
     parse_generation_result,
 )
@@ -14,11 +15,28 @@ from app.services.session_store import get_session
 router = APIRouter(prefix="/api", tags=["generate"])
 
 
-def _run_generation(session: Session) -> GenerationResult:
+def _get_session_or_404(session_id: str) -> Session:
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session 不存在或已過期")
+    return session
+
+
+def _summarize_for_history(result: GenerationResult) -> str:
+    parts = [f"已更新測試用例，目前共 {len(result.test_cases)} 筆。"]
+    if result.clarification_questions:
+        questions = "；".join(q.question for q in result.clarification_questions)
+        parts.append(f"仍有 {len(result.clarification_questions)} 個待釐清問題：{questions}")
+    return " ".join(parts)
+
+
+@router.post("/sessions/{session_id}/generate", response_model=GenerationResult)
+def generate(session_id: str):
+    session = _get_session_or_404(session_id)
     if not session.materials:
         raise HTTPException(status_code=400, detail="尚未上傳任何素材")
 
-    messages = build_messages(session.materials, session.qa_history)
+    messages = build_messages(session.materials)
     raw_response = chat_completion(messages)
 
     try:
@@ -30,28 +48,33 @@ def _run_generation(session: Session) -> GenerationResult:
     return result
 
 
-def _get_session_or_404(session_id: str) -> Session:
-    session = get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session 不存在或已過期")
-    return session
+class ChatPayload(BaseModel):
+    message: str
+    current_test_cases: list[TestCase] = Field(default_factory=list)
 
 
-@router.post("/sessions/{session_id}/generate", response_model=GenerationResult)
-def generate(session_id: str):
+@router.post("/sessions/{session_id}/chat", response_model=GenerationResult)
+def chat(session_id: str, payload: ChatPayload):
     session = _get_session_or_404(session_id)
-    return _run_generation(session)
+    if not session.materials:
+        raise HTTPException(status_code=400, detail="尚未上傳任何素材")
 
+    prior_history = list(session.chat_history)
+    session.chat_history.append(ChatMessage(role="user", content=payload.message))
 
-class AnswerPayload(BaseModel):
-    answers: list[QAAnswer]
+    messages = build_chat_messages(
+        session.materials, payload.current_test_cases, prior_history, payload.message
+    )
+    raw_response = chat_completion(messages)
 
+    try:
+        result = parse_generation_result(raw_response)
+    except LLMResponseParseError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-@router.post("/sessions/{session_id}/answers", response_model=GenerationResult)
-def submit_answers(session_id: str, payload: AnswerPayload):
-    session = _get_session_or_404(session_id)
-    session.qa_history.extend(payload.answers)
-    return _run_generation(session)
+    session.last_result = result
+    session.chat_history.append(ChatMessage(role="assistant", content=_summarize_for_history(result)))
+    return result
 
 
 @router.put("/sessions/{session_id}/test-cases", response_model=GenerationResult)

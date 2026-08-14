@@ -10,20 +10,24 @@
 - [x] 文件解析模組（PDF / Word / Markdown / 圖片）
 - [x] LLM client（OpenAI 相容介面，支援 vision）
 - [x] 測試用例 schema 與 prompt builder（含「不可臆測，須提出澄清問題」規則）
-- [x] session store 與對話式澄清流程（/upload /generate /answers /test-cases）
+- [x] session store 與統一對話式編輯流程（/upload /materials/text /generate /chat /test-cases）
 - [x] Markdown 匯出功能（/export）
 - [x] 端對端驗證：已對接真實內部模型（Qwen3.5-122B-A10B，OpenAI 相容 `/itllm/v1`），跑過完整流程（上傳 → 產生 → 對已知資訊正確產出用例、對不確定資訊正確提出澄清問題 → 回答後重新產生 → 匯出 Markdown），結果符合預期
+- [x] 文字素材輸入 API（`/materials/text`），不需檔案即可貼文字加入素材
+- [x] 統一對話式編輯 API（`/chat`）：取代原本一次性的 /answers，改為可重複呼叫的對話端點，能一次指令同時修改多筆用例的優先級/步驟/刪除等，已用 curl 驗證（一次指令同時完成「全部改優先級」「刪除一筆」「幫另一筆加步驟」，且未動到其餘內容）
 
 ## 前端
 - [x] Vite + React + TS 專案骨架（npm install / tsc -b / npm run build 皆通過）
-- [x] 上傳頁面（多檔案）
-- [x] 對話式澄清聊天介面
+- [x] 上傳頁面（多檔案 + 動態文字欄位）
+- [x] 對話式澄清聊天介面 → 已升級為常駐聊天面板（見下）
 - [x] 可編輯測試用例表格
 - [x] 匯出下載按鈕
-- [x] 瀏覽器實測：上傳 → 問題顯示 → 多輪問答 → 編輯表格 → 匯出，整條流程跑通。過程中發現並修正一個真實 bug：`ClarifyChat` 原本只渲染已回答的問題，使用者在回答前看不到當前問題內容（`frontend/src/components/ClarifyChat.tsx`）
+- [x] 瀏覽器實測：上傳 → 問題顯示 → 多輪問答 → 編輯表格 → 匯出，整條流程跑通。過程中發現並修正一個真實 bug：`ClarifyChat` 原本只渲染已回答的問題，使用者在回答前看不到當前問題內容
+- [x] 上傳面板新增「欄位一/欄位二…」可動態新增的文字輸入區，貼文字後可個別加入素材，效果等同上傳檔案
+- [x] 聊天視窗常駐化：`ClarifyChat` 改造為 `ChatPanel`，用例產生後聊天視窗不再消失，可持續用自然語言下指令一次修改多筆用例/多個步驟；App 階段從「upload → clarify → review」簡化為「upload → workspace（聊天 + 表格 + 匯出同時存在）」。瀏覽器實測：貼兩段需求、產生用例、聊天下達「全部優先級改 P1 + 幫用例1新增一個步驟」，兩筆用例優先級與新步驟皆正確反映在表格上，聊天紀錄全程保留，匯出也正常
 
 ## 待確認 / 開放項目
 - PPT 檔案支援尚未實作，列為未來擴充。
 - `requirements.txt` 原本鎖死版本號，因本機 Python 3.14 太新導致 pydantic-core 編譯失敗，已改為下限版本（`>=`），未來如需重現穩定版本建議另外鎖定實際安裝到的版本號。
 - `LLM_BASE_URL` 需含 `/v1` 尾碼（例：`http://10.136.217.41/itllm/v1`），SDK 會自動接上 `/chat/completions`，這點已記錄在 `.env.example` 註解中。
-- 前端（`npm run dev`）尚未實際在瀏覽器中操作驗證，只驗證了型別檢查與 production build 成功；後端 API 已用 curl 端對端驗證通過。
+- `/chat` 每次都會把原始素材（含圖片）重新送給模型以維持完整上下文，長對話下 payload 會變大；目前沒有做歷史訊息裁切，單次使用場景下應該夠用，若之後要支援長時間多輪編輯可再考慮限制對話紀錄長度。

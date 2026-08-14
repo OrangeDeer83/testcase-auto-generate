@@ -22,10 +22,9 @@ export interface GenerationResult {
   clarification_questions: ClarificationQuestion[]
 }
 
-export interface QAAnswer {
-  question_id: string
-  question: string
-  answer: string
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 export interface UploadedMaterial {

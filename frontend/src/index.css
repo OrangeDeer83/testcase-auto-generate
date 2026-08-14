@@ -34,6 +34,35 @@ h1 {
   margin-bottom: 20px;
 }
 
+.text-field-row {
+  margin-bottom: 12px;
+}
+
+.text-field-label {
+  display: block;
+  font-size: 0.82rem;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.text-field-row textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 70px;
+  resize: vertical;
+  border: 1px solid #d5d8de;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.text-field-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
 .material-list {
   list-style: none;
   padding: 0;

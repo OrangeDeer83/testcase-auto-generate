@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -25,7 +27,6 @@ class GenerationResult(BaseModel):
     clarification_questions: list[ClarificationQuestion] = Field(default_factory=list)
 
 
-class QAAnswer(BaseModel):
-    question_id: str
-    question: str
-    answer: str
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str

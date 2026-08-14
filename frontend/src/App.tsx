@@ -1,12 +1,27 @@
 import { useState } from 'react'
-import { createSession, generate, submitAnswers, uploadMaterials } from './api'
-import { ClarifyChat, type ChatEntry } from './components/ClarifyChat'
+import { addTextMaterial, createSession, generate, sendChatMessage, uploadMaterials } from './api'
+import { ChatPanel } from './components/ChatPanel'
 import { ExportButton } from './components/ExportButton'
 import { TestCaseTable } from './components/TestCaseTable'
 import { UploadPanel } from './components/UploadPanel'
-import type { ClarificationQuestion, GenerationResult, QAAnswer, UploadedMaterial } from './types'
+import type { ChatMessage, GenerationResult, UploadedMaterial } from './types'
 
-type Stage = 'upload' | 'clarify' | 'review'
+type Stage = 'upload' | 'workspace'
+
+function describeResult(result: GenerationResult): ChatMessage[] {
+  if (result.clarification_questions.length > 0) {
+    return result.clarification_questions.map((q) => ({
+      role: 'assistant' as const,
+      content: q.context ? `${q.question}\n依據：${q.context}` : q.question,
+    }))
+  }
+  return [
+    {
+      role: 'assistant',
+      content: `已更新測試用例，目前共 ${result.test_cases.length} 筆，沒有待釐清的問題。`,
+    },
+  ]
+}
 
 export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -15,32 +30,13 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<GenerationResult | null>(null)
-
-  const [chatLog, setChatLog] = useState<ChatEntry[]>([])
-  const [currentQuestion, setCurrentQuestion] = useState<ClarificationQuestion | null>(null)
-  const [queue, setQueue] = useState<ClarificationQuestion[]>([])
-  const [collectedAnswers, setCollectedAnswers] = useState<QAAnswer[]>([])
+  const [chatLog, setChatLog] = useState<ChatMessage[]>([])
 
   const ensureSession = async (): Promise<string> => {
     if (sessionId) return sessionId
     const id = await createSession()
     setSessionId(id)
     return id
-  }
-
-  const applyResult = (res: GenerationResult) => {
-    setResult(res)
-    if (res.clarification_questions.length > 0) {
-      const [first, ...rest] = res.clarification_questions
-      setCurrentQuestion(first)
-      setQueue(rest)
-      setCollectedAnswers([])
-      setStage('clarify')
-    } else {
-      setCurrentQuestion(null)
-      setQueue([])
-      setStage('review')
-    }
   }
 
   const handleUpload = async (files: File[]) => {
@@ -57,13 +53,26 @@ export default function App() {
     }
   }
 
+  const handleAddText = async (label: string, content: string) => {
+    setError(null)
+    try {
+      const id = await ensureSession()
+      const res = await addTextMaterial(id, label, content)
+      setMaterials((prev) => [...prev, ...res.uploaded])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加入文字素材失敗')
+    }
+  }
+
   const handleGenerate = async () => {
     if (!sessionId) return
     setBusy(true)
     setError(null)
     try {
       const res = await generate(sessionId)
-      applyResult(res)
+      setResult(res)
+      setChatLog(describeResult(res))
+      setStage('workspace')
     } catch (err) {
       setError(err instanceof Error ? err.message : '產生失敗')
     } finally {
@@ -71,32 +80,17 @@ export default function App() {
     }
   }
 
-  const handleAnswer = async (answer: string) => {
-    if (!currentQuestion || !sessionId) return
-
-    setChatLog((prev) => [...prev, { question: currentQuestion, answer }])
-    const newAnswers = [
-      ...collectedAnswers,
-      { question_id: currentQuestion.id, question: currentQuestion.question, answer },
-    ]
-
-    if (queue.length > 0) {
-      const [next, ...rest] = queue
-      setCurrentQuestion(next)
-      setQueue(rest)
-      setCollectedAnswers(newAnswers)
-      return
-    }
-
-    setCurrentQuestion(null)
+  const handleSendMessage = async (message: string) => {
+    if (!sessionId || !result) return
+    setChatLog((prev) => [...prev, { role: 'user', content: message }])
     setBusy(true)
     setError(null)
     try {
-      const res = await submitAnswers(sessionId, newAnswers)
-      setCollectedAnswers([])
-      applyResult(res)
+      const res = await sendChatMessage(sessionId, message, result.test_cases)
+      setResult(res)
+      setChatLog((prev) => [...prev, ...describeResult(res)])
     } catch (err) {
-      setError(err instanceof Error ? err.message : '送出回答失敗')
+      setError(err instanceof Error ? err.message : '送出訊息失敗')
     } finally {
       setBusy(false)
     }
@@ -114,21 +108,14 @@ export default function App() {
           materials={materials}
           busy={busy}
           onUpload={handleUpload}
+          onAddText={handleAddText}
           onGenerate={handleGenerate}
         />
       )}
 
-      {stage === 'clarify' && (
-        <ClarifyChat
-          log={chatLog}
-          currentQuestion={currentQuestion}
-          busy={busy}
-          onAnswer={handleAnswer}
-        />
-      )}
-
-      {stage === 'review' && result && sessionId && (
+      {stage === 'workspace' && result && sessionId && (
         <>
+          <ChatPanel log={chatLog} busy={busy} onSend={handleSendMessage} />
           <TestCaseTable
             testCases={result.test_cases}
             onChange={(testCases) => setResult({ ...result, test_cases: testCases })}

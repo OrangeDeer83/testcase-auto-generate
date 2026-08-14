@@ -1,4 +1,4 @@
-import type { GenerationResult, QAAnswer, UploadedMaterial } from './types'
+import type { GenerationResult, TestCase, UploadedMaterial } from './types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
@@ -30,6 +30,19 @@ export async function uploadMaterials(
   return handleResponse(response)
 }
 
+export async function addTextMaterial(
+  sessionId: string,
+  label: string,
+  content: string,
+): Promise<{ uploaded: UploadedMaterial[]; total_materials: number }> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/materials/text`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label, content }),
+  })
+  return handleResponse(response)
+}
+
 export async function generate(sessionId: string): Promise<GenerationResult> {
   const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/generate`, {
     method: 'POST',
@@ -37,14 +50,15 @@ export async function generate(sessionId: string): Promise<GenerationResult> {
   return handleResponse(response)
 }
 
-export async function submitAnswers(
+export async function sendChatMessage(
   sessionId: string,
-  answers: QAAnswer[],
+  message: string,
+  currentTestCases: TestCase[],
 ): Promise<GenerationResult> {
-  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/answers`, {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ answers }),
+    body: JSON.stringify({ message, current_test_cases: currentTestCases }),
   })
   return handleResponse(response)
 }
