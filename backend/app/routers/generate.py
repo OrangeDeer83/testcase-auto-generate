@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.logging_config import logger
 from app.models.session import Session
 from app.models.test_case import ChatMessage, GenerationResult, TestCase
 from app.services.llm_client import chat_completion
@@ -36,15 +37,26 @@ def generate(session_id: str):
     if not session.materials:
         raise HTTPException(status_code=400, detail="尚未上傳任何素材")
 
+    logger.info(
+        "POST /generate session=%s materials=%d", session_id, len(session.materials)
+    )
+
     messages = build_messages(session.materials)
     raw_response = chat_completion(messages)
 
     try:
         result = parse_generation_result(raw_response)
     except LLMResponseParseError as exc:
+        logger.error("POST /generate session=%s 解析失敗: %s", session_id, exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     session.last_result = result
+    logger.info(
+        "POST /generate session=%s 結果: test_cases=%d questions=%d",
+        session_id,
+        len(result.test_cases),
+        len(result.clarification_questions),
+    )
     return result
 
 
@@ -64,6 +76,14 @@ def chat(session_id: str, payload: ChatPayload):
     prior_history = list(session.chat_history)
     session.chat_history.append(ChatMessage(role="user", content=payload.message))
 
+    logger.info(
+        "POST /chat session=%s message=%r current_test_cases=%d pending_questions=%d",
+        session_id,
+        payload.message,
+        len(payload.current_test_cases),
+        len(pending_questions),
+    )
+
     messages = build_chat_messages(
         session.materials, payload.current_test_cases, pending_questions, prior_history, payload.message
     )
@@ -72,10 +92,17 @@ def chat(session_id: str, payload: ChatPayload):
     try:
         result = parse_generation_result(raw_response)
     except LLMResponseParseError as exc:
+        logger.error("POST /chat session=%s 解析失敗: %s", session_id, exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     session.last_result = result
     session.chat_history.append(ChatMessage(role="assistant", content=_summarize_for_history(result)))
+    logger.info(
+        "POST /chat session=%s 結果: test_cases=%d questions=%d",
+        session_id,
+        len(result.test_cases),
+        len(result.clarification_questions),
+    )
     return result
 
 
