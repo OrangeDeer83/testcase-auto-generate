@@ -12,18 +12,21 @@ function nextFieldId(fields: TextField[]): number {
   return fields.reduce((max, f) => Math.max(max, f.id), 0) + 1
 }
 
+export interface TextMaterialDraft {
+  label: string
+  content: string
+}
+
 interface UploadPanelProps {
   materials: UploadedMaterial[]
   busy: boolean
   onUpload: (files: File[]) => void
-  onAddText: (label: string, content: string) => Promise<void>
-  onGenerate: () => void
+  onGenerate: (textMaterials: TextMaterialDraft[]) => void
 }
 
-export function UploadPanel({ materials, busy, onUpload, onAddText, onGenerate }: UploadPanelProps) {
+export function UploadPanel({ materials, busy, onUpload, onGenerate }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [textFields, setTextFields] = useState<TextField[]>(() => [{ id: 1, value: '' }])
-  const [addingId, setAddingId] = useState<number | null>(null)
 
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
@@ -43,18 +46,11 @@ export function UploadPanel({ materials, busy, onUpload, onAddText, onGenerate }
     setTextFields((fields) => (fields.length > 1 ? fields.filter((f) => f.id !== id) : fields))
   }
 
-  const submitField = async (field: TextField) => {
-    if (!field.value.trim()) return
-    setAddingId(field.id)
-    try {
-      await onAddText(`欄位${field.id}`, field.value.trim())
-      setTextFields((fields) => {
-        const remaining = fields.filter((f) => f.id !== field.id)
-        return remaining.length > 0 ? remaining : [{ id: nextFieldId(remaining), value: '' }]
-      })
-    } finally {
-      setAddingId(null)
-    }
+  const nonEmptyFields = textFields.filter((f) => f.value.trim())
+  const readyCount = materials.length + nonEmptyFields.length
+
+  const handleGenerateClick = () => {
+    onGenerate(nonEmptyFields.map((f) => ({ label: `欄位${f.id}`, content: f.value.trim() })))
   }
 
   return (
@@ -74,27 +70,25 @@ export function UploadPanel({ materials, busy, onUpload, onAddText, onGenerate }
       />
 
       <p className="subtitle" style={{ marginTop: 16 }}>
-        或直接貼上文字，可分成多個欄位、逐一加入，也可以一次貼很多內容到單一欄位：
+        或直接貼上文字，可分成多個欄位，也可以一次貼很多內容到單一欄位——有內容的欄位會在產生用例時自動當作素材，空的欄位會被忽略：
       </p>
 
       {textFields.map((field) => (
         <div key={field.id} className="text-field-row">
           <label className="text-field-label">欄位{field.id}</label>
-          <textarea
-            value={field.value}
-            disabled={busy}
-            placeholder="貼上需求文字…"
-            onChange={(e) => updateField(field.id, e.target.value)}
-          />
-          <div className="text-field-actions">
-            <button
-              disabled={busy || addingId === field.id || !field.value.trim()}
-              onClick={() => submitField(field)}
-            >
-              {addingId === field.id ? '加入中…' : '加入為素材'}
-            </button>
+          <div className="text-field-input-row">
+            <textarea
+              value={field.value}
+              disabled={busy}
+              placeholder="貼上需求文字…"
+              onChange={(e) => updateField(field.id, e.target.value)}
+            />
             {textFields.length > 1 && (
-              <button className="secondary" disabled={busy} onClick={() => removeField(field.id)}>
+              <button
+                className="secondary text-field-remove"
+                disabled={busy}
+                onClick={() => removeField(field.id)}
+              >
                 移除欄位
               </button>
             )}
@@ -117,8 +111,8 @@ export function UploadPanel({ materials, busy, onUpload, onAddText, onGenerate }
       )}
 
       <div className="toolbar">
-        <span className="subtitle">已加入 {materials.length} 項素材</span>
-        <button disabled={busy || materials.length === 0} onClick={onGenerate}>
+        <span className="subtitle">已備妥 {readyCount} 項素材</span>
+        <button disabled={busy || readyCount === 0} onClick={handleGenerateClick}>
           {busy ? '產生中…' : '開始產生測試用例'}
         </button>
       </div>

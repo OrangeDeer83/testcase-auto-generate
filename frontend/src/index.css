@@ -45,8 +45,15 @@ h1 {
   margin-bottom: 4px;
 }
 
-.text-field-row textarea {
-  width: 100%;
+.text-field-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.text-field-input-row textarea {
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
   min-height: 70px;
   resize: vertical;
@@ -57,10 +64,9 @@ h1 {
   font-size: 0.9rem;
 }
 
-.text-field-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 6px;
+.text-field-remove {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .material-list {

@@ -3,7 +3,7 @@ import { addTextMaterial, createSession, generate, sendChatMessage, uploadMateri
 import { ChatPanel } from './components/ChatPanel'
 import { ExportButton } from './components/ExportButton'
 import { TestCaseTable } from './components/TestCaseTable'
-import { UploadPanel } from './components/UploadPanel'
+import { UploadPanel, type TextMaterialDraft } from './components/UploadPanel'
 import type { ChatMessage, GenerationResult, UploadedMaterial } from './types'
 
 type Stage = 'upload' | 'workspace'
@@ -53,23 +53,16 @@ export default function App() {
     }
   }
 
-  const handleAddText = async (label: string, content: string) => {
-    setError(null)
-    try {
-      const id = await ensureSession()
-      const res = await addTextMaterial(id, label, content)
-      setMaterials((prev) => [...prev, ...res.uploaded])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '加入文字素材失敗')
-    }
-  }
-
-  const handleGenerate = async () => {
-    if (!sessionId) return
+  const handleGenerate = async (textMaterials: TextMaterialDraft[]) => {
     setBusy(true)
     setError(null)
     try {
-      const res = await generate(sessionId)
+      const id = await ensureSession()
+      for (const draft of textMaterials) {
+        const res = await addTextMaterial(id, draft.label, draft.content)
+        setMaterials((prev) => [...prev, ...res.uploaded])
+      }
+      const res = await generate(id)
       setResult(res)
       setChatLog(describeResult(res))
       setStage('workspace')
@@ -108,7 +101,6 @@ export default function App() {
           materials={materials}
           busy={busy}
           onUpload={handleUpload}
-          onAddText={handleAddText}
           onGenerate={handleGenerate}
         />
       )}
