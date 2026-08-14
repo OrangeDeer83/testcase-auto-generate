@@ -92,7 +92,7 @@ export default function App() {
     }
   }
 
-  const handleSendMessage = async (message: string, image?: File) => {
+  const handleSendMessage = async (message: string, file?: File) => {
     if (!sessionId || !result) return
     setBusy(true)
     setError(null)
@@ -100,17 +100,21 @@ export default function App() {
       let finalMessage = message
       let imageUrl: string | undefined
 
-      if (image) {
-        const uploadRes = await uploadMaterials(sessionId, [image])
+      if (file) {
+        const uploadRes = await uploadMaterials(sessionId, [file])
         setMaterials((prev) => [...prev, ...uploadRes.uploaded])
-        const label = uploadRes.uploaded[0]?.filename ?? image.name
+        const label = uploadRes.uploaded[0]?.filename ?? file.name
+        const isImage = file.type.startsWith('image/')
         finalMessage = message
-          ? `${message}（已附上圖片：${label}）`
-          : `（附上圖片：${label}，請參考圖片內容回答）`
-        imageUrl = URL.createObjectURL(image)
+          ? `${message}（已附上${isImage ? '圖片' : '文件'}：${label}）`
+          : `（附上${isImage ? '圖片' : '文件'}：${label}，請參考內容回答）`
+        if (isImage) imageUrl = URL.createObjectURL(file)
       }
 
-      setChatLog((prev) => [...prev, { role: 'user', content: message || '（附上圖片）', imageUrl }])
+      setChatLog((prev) => [
+        ...prev,
+        { role: 'user', content: message || (file ? `（附上：${file.name}）` : ''), imageUrl },
+      ])
 
       const res = await sendChatMessage(sessionId, finalMessage, result.test_cases)
       setResult(res)

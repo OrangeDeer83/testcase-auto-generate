@@ -1,39 +1,45 @@
 import { useRef, useState } from 'react'
 import type { ChatMessage } from '../types'
 
+const ACCEPTED_EXTENSIONS = '.pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg'
+
 interface ChatPanelProps {
   log: ChatMessage[]
   busy: boolean
-  onSend: (message: string, image?: File) => void
+  onSend: (message: string, file?: File) => void
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/')
 }
 
 export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
   const [draft, setDraft] = useState('')
-  const [attachedImage, setAttachedImage] = useState<File | null>(null)
+  const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [attachedPreviewUrl, setAttachedPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const canSend = (draft.trim() || attachedImage) && !busy
+  const canSend = (draft.trim() || attachedFile) && !busy
 
-  const handleAttachImage = (fileList: FileList | null) => {
+  const handleAttachFile = (fileList: FileList | null) => {
     const file = fileList?.[0]
     if (!file) return
-    setAttachedImage(file)
-    setAttachedPreviewUrl(URL.createObjectURL(file))
+    setAttachedFile(file)
+    setAttachedPreviewUrl(isImageFile(file) ? URL.createObjectURL(file) : null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const clearAttachment = () => {
     if (attachedPreviewUrl) URL.revokeObjectURL(attachedPreviewUrl)
-    setAttachedImage(null)
+    setAttachedFile(null)
     setAttachedPreviewUrl(null)
   }
 
   const submit = () => {
     if (!canSend) return
-    onSend(draft.trim(), attachedImage ?? undefined)
+    onSend(draft.trim(), attachedFile ?? undefined)
     setDraft('')
-    setAttachedImage(null)
+    setAttachedFile(null)
     setAttachedPreviewUrl(null)
   }
 
@@ -41,12 +47,12 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
     <div className="panel">
       <h2>2. 對話</h2>
       <p className="subtitle">
-        回答 LLM 提出的澄清問題，或直接輸入指令請它修改測試用例——可以一次調整多筆用例、多個步驟，也可以附上圖片說明。
+        回答 LLM 提出的澄清問題，或直接輸入指令請它修改測試用例——可以一次調整多筆用例、多個步驟，也可以附上圖片或文件說明。
       </p>
 
       <div className="chat-log">
         {log.map((entry, idx) => (
-          <div key={idx}>
+          <div key={idx} className={`chat-entry entry-${entry.role}`}>
             <div className={`chat-bubble ${entry.role === 'user' ? 'answer' : 'question'}`}>
               {entry.content}
               {entry.imageUrl && <img src={entry.imageUrl} alt="附加圖片" />}
@@ -54,15 +60,23 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
             {entry.context && <div className="chat-bubble context">依據：{entry.context}</div>}
           </div>
         ))}
-        {busy && <div className="chat-bubble question">思考中…</div>}
+        {busy && (
+          <div className="chat-entry entry-assistant">
+            <div className="chat-bubble question">思考中…</div>
+          </div>
+        )}
       </div>
 
-      {attachedPreviewUrl && (
+      {attachedFile && (
         <div className="chat-attachment-preview">
-          <img src={attachedPreviewUrl} alt="待送出的附加圖片" />
-          <span>{attachedImage?.name}</span>
+          {attachedPreviewUrl ? (
+            <img src={attachedPreviewUrl} alt="待送出的附加圖片" />
+          ) : (
+            <span>📄</span>
+          )}
+          <span>{attachedFile.name}</span>
           <button className="secondary" disabled={busy} onClick={clearAttachment}>
-            移除圖片
+            移除附件
           </button>
         </div>
       )}
@@ -71,16 +85,16 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg"
+          accept={ACCEPTED_EXTENSIONS}
           style={{ display: 'none' }}
-          onChange={(e) => handleAttachImage(e.target.files)}
+          onChange={(e) => handleAttachFile(e.target.files)}
         />
         <button
           className="secondary chat-attach-button"
           disabled={busy}
           onClick={() => fileInputRef.current?.click()}
         >
-          🖼️ 附圖
+          📎 附加
         </button>
         <textarea
           value={draft}

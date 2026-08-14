@@ -127,8 +127,22 @@ button.secondary {
   margin-bottom: 16px;
 }
 
-.chat-bubble {
+.chat-entry {
+  display: flex;
+  flex-direction: column;
   max-width: 80%;
+  gap: 4px;
+}
+
+.chat-entry.entry-user {
+  align-self: flex-end;
+}
+
+.chat-entry.entry-assistant {
+  align-self: flex-start;
+}
+
+.chat-bubble {
   padding: 10px 14px;
   border-radius: 10px;
   font-size: 0.9rem;
@@ -138,21 +152,18 @@ button.secondary {
 
 .chat-bubble.question {
   background: #eef1f7;
-  align-self: flex-start;
 }
 
 .chat-bubble.context {
   background: transparent;
   color: #8a8f9c;
   font-size: 0.78rem;
-  align-self: flex-start;
   padding: 0 4px;
 }
 
 .chat-bubble.answer {
   background: #2f5fdb;
   color: #fff;
-  align-self: flex-end;
 }
 
 .chat-bubble img {
