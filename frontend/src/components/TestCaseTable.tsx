@@ -4,6 +4,7 @@ interface TestCaseTableProps {
   testCases: TestCase[]
   onChange: (testCases: TestCase[]) => void
   highlightedKeys?: Set<string>
+  previousValues?: Map<string, string>
   onFieldFocus?: (keys: string[]) => void
 }
 
@@ -19,10 +20,13 @@ export function TestCaseTable({
   testCases,
   onChange,
   highlightedKeys,
+  previousValues,
   onFieldFocus,
 }: TestCaseTableProps) {
   const isHighlighted = (key: string) => highlightedKeys?.has(key) ?? false
+  const previousValueOf = (key: string) => previousValues?.get(key)
   const focusClears = (keys: string[]) => () => onFieldFocus?.(keys)
+
   const updateCase = (index: number, patch: Partial<TestCase>) => {
     const next = testCases.slice()
     next[index] = { ...next[index], ...patch }
@@ -66,6 +70,7 @@ export function TestCaseTable({
 
       {testCases.map((testCase, caseIndex) => (
         <div
+          id={`field-case:${caseIndex}`}
           className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}`}
           key={caseIndex}
         >
@@ -86,21 +91,35 @@ export function TestCaseTable({
             <label>
               優先級
               <input
+                id={`field-case:${caseIndex}:priority`}
                 className={isHighlighted(`case:${caseIndex}:priority`) ? 'cell-highlight' : ''}
                 value={testCase.priority}
                 onChange={(e) => updateCase(caseIndex, { priority: e.target.value })}
                 onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:priority`])}
                 style={{ width: 80 }}
               />
+              {isHighlighted(`case:${caseIndex}:priority`) &&
+                previousValueOf(`case:${caseIndex}:priority`) !== undefined && (
+                  <div className="previous-value">
+                    原本：{previousValueOf(`case:${caseIndex}:priority`) || '（空）'}
+                  </div>
+                )}
             </label>
             <label style={{ flex: 1 }}>
               前置條件
               <input
+                id={`field-case:${caseIndex}:preconditions`}
                 className={isHighlighted(`case:${caseIndex}:preconditions`) ? 'cell-highlight' : ''}
                 value={testCase.preconditions}
                 onChange={(e) => updateCase(caseIndex, { preconditions: e.target.value })}
                 onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:preconditions`])}
               />
+              {isHighlighted(`case:${caseIndex}:preconditions`) &&
+                previousValueOf(`case:${caseIndex}:preconditions`) !== undefined && (
+                  <div className="previous-value">
+                    原本：{previousValueOf(`case:${caseIndex}:preconditions`) || '（空）'}
+                  </div>
+                )}
             </label>
           </div>
 
@@ -117,11 +136,18 @@ export function TestCaseTable({
               {testCase.steps.map((step, stepIndex) => {
                 const stepKey = `case:${caseIndex}:step:${stepIndex}`
                 const rowHighlighted = isHighlighted(stepKey)
+                const prevDescription = previousValueOf(`${stepKey}:description`)
+                const prevExpected = previousValueOf(`${stepKey}:expected_result`)
                 return (
-                  <tr key={stepIndex} className={rowHighlighted ? 'cell-highlight' : undefined}>
+                  <tr
+                    id={`field-${stepKey}`}
+                    key={stepIndex}
+                    className={rowHighlighted ? 'cell-highlight' : undefined}
+                  >
                     <td>{step.step_no}</td>
                     <td>
                       <textarea
+                        id={`field-${stepKey}:description`}
                         className={
                           rowHighlighted || isHighlighted(`${stepKey}:description`)
                             ? 'cell-highlight'
@@ -137,9 +163,13 @@ export function TestCaseTable({
                           `${stepKey}:description`,
                         ])}
                       />
+                      {isHighlighted(`${stepKey}:description`) && prevDescription !== undefined && (
+                        <div className="previous-value">原本：{prevDescription || '（空）'}</div>
+                      )}
                     </td>
                     <td>
                       <textarea
+                        id={`field-${stepKey}:expected_result`}
                         className={
                           rowHighlighted || isHighlighted(`${stepKey}:expected_result`)
                             ? 'cell-highlight'
@@ -155,6 +185,9 @@ export function TestCaseTable({
                           `${stepKey}:expected_result`,
                         ])}
                       />
+                      {isHighlighted(`${stepKey}:expected_result`) && prevExpected !== undefined && (
+                        <div className="previous-value">原本：{prevExpected || '（空）'}</div>
+                      )}
                     </td>
                     <td>
                       <button className="secondary" onClick={() => removeStep(caseIndex, stepIndex)}>

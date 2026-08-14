@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChatMessage } from '../types'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg'
@@ -18,6 +18,11 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [attachedPreviewUrl, setAttachedPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const logEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [log, busy])
 
   const canSend = (draft.trim() || attachedFile) && !busy
 
@@ -65,6 +70,7 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
             <div className="chat-bubble question">思考中…</div>
           </div>
         )}
+        <div ref={logEndRef} />
       </div>
 
       {attachedFile && (

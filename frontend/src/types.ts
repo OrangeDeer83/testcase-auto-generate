@@ -33,4 +33,6 @@ export interface UploadedMaterial {
   id: string
   filename: string
   kind: 'text' | 'image'
+  text?: string
+  image_data_url?: string
 }

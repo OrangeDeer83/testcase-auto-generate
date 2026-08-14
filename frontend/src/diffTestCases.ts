@@ -107,3 +107,39 @@ export function getChangedCellKeys(before: TestCase[], after: TestCase[]): Set<s
 
   return keys
 }
+
+/**
+ * 比對聊天前後的測試用例，回傳每個「有變動的儲存格」對應的舊值，供表格上用灰字顯示
+ * 「原本是什麼」。key 規則與 getChangedCellKeys 相同，但只有欄位層級的變動才有舊值
+ * 可顯示（整筆新增的用例/步驟沒有「之前」，不會出現在這裡）。
+ */
+export function getPreviousValues(before: TestCase[], after: TestCase[]): Map<string, string> {
+  const values = new Map<string, string>()
+  const beforeByName = new Map(before.map((tc) => [tc.name, tc]))
+
+  after.forEach((tc, caseIndex) => {
+    const prev = beforeByName.get(tc.name)
+    if (!prev) return
+
+    if (prev.priority !== tc.priority) {
+      values.set(`case:${caseIndex}:priority`, prev.priority)
+    }
+    if (prev.preconditions !== tc.preconditions) {
+      values.set(`case:${caseIndex}:preconditions`, prev.preconditions)
+    }
+
+    tc.steps.forEach((step, stepIndex) => {
+      const prevStep = prev.steps[stepIndex]
+      if (!prevStep) return
+      const stepKey = `case:${caseIndex}:step:${stepIndex}`
+      if (prevStep.description !== step.description) {
+        values.set(`${stepKey}:description`, prevStep.description)
+      }
+      if (prevStep.expected_result !== step.expected_result) {
+        values.set(`${stepKey}:expected_result`, prevStep.expected_result)
+      }
+    })
+  })
+
+  return values
+}

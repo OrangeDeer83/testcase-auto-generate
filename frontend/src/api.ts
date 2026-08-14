@@ -51,6 +51,11 @@ export async function deleteMaterial(sessionId: string, materialId: string): Pro
   await handleResponse(response)
 }
 
+export async function getMaterials(sessionId: string): Promise<UploadedMaterial[]> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/materials`)
+  return handleResponse(response)
+}
+
 export async function generate(sessionId: string): Promise<GenerationResult> {
   const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/generate`, {
     method: 'POST',

@@ -4,14 +4,16 @@ import {
   createSession,
   deleteMaterial,
   generate,
+  getMaterials,
   sendChatMessage,
   uploadMaterials,
 } from './api'
 import { ChatPanel } from './components/ChatPanel'
 import { ExportButton } from './components/ExportButton'
+import { MaterialsModal } from './components/MaterialsModal'
 import { TestCaseTable } from './components/TestCaseTable'
 import { UploadPanel, type TextMaterialDraft } from './components/UploadPanel'
-import { diffTestCases, getChangedCellKeys } from './diffTestCases'
+import { diffTestCases, getChangedCellKeys, getPreviousValues } from './diffTestCases'
 import type { ChatMessage, GenerationResult, UploadedMaterial } from './types'
 
 type Stage = 'upload' | 'workspace'
@@ -41,6 +43,8 @@ export default function App() {
   const [result, setResult] = useState<GenerationResult | null>(null)
   const [chatLog, setChatLog] = useState<ChatMessage[]>([])
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
+  const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
+  const [showMaterials, setShowMaterials] = useState(false)
 
   const clearHighlight = (keys: string[]) => {
     setHighlightedKeys((prev) => {
@@ -58,13 +62,18 @@ export default function App() {
     return id
   }
 
+  const refreshMaterials = async (id: string) => {
+    const list = await getMaterials(id)
+    setMaterials(list)
+  }
+
   const handleUpload = async (files: File[]) => {
     setBusy(true)
     setError(null)
     try {
       const id = await ensureSession()
-      const res = await uploadMaterials(id, files)
-      setMaterials((prev) => [...prev, ...res.uploaded])
+      await uploadMaterials(id, files)
+      await refreshMaterials(id)
     } catch (err) {
       setError(err instanceof Error ? err.message : '上傳失敗')
     } finally {
@@ -77,7 +86,7 @@ export default function App() {
     setError(null)
     try {
       await deleteMaterial(sessionId, id)
-      setMaterials((prev) => prev.filter((m) => m.id !== id))
+      await refreshMaterials(sessionId)
     } catch (err) {
       setError(err instanceof Error ? err.message : '刪除素材失敗')
     }
@@ -89,9 +98,9 @@ export default function App() {
     try {
       const id = await ensureSession()
       for (const draft of textMaterials) {
-        const res = await addTextMaterial(id, draft.label, draft.content)
-        setMaterials((prev) => [...prev, ...res.uploaded])
+        await addTextMaterial(id, draft.label, draft.content)
       }
+      await refreshMaterials(id)
       const res = await generate(id)
       setResult(res)
       setChatLog(describeResult(res))
@@ -103,6 +112,16 @@ export default function App() {
     }
   }
 
+  const scrollToFirstChange = (keys: Set<string>) => {
+    const first = Array.from(keys)[0]
+    if (!first) return
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`field-${first}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
+
   const handleSendMessage = async (message: string, file?: File) => {
     if (!sessionId || !result) return
     setBusy(true)
@@ -112,13 +131,12 @@ export default function App() {
       let imageUrl: string | undefined
 
       if (file) {
-        const uploadRes = await uploadMaterials(sessionId, [file])
-        setMaterials((prev) => [...prev, ...uploadRes.uploaded])
-        const label = uploadRes.uploaded[0]?.filename ?? file.name
+        await uploadMaterials(sessionId, [file])
+        await refreshMaterials(sessionId)
         const isImage = file.type.startsWith('image/')
         finalMessage = message
-          ? `${message}（已附上${isImage ? '圖片' : '文件'}：${label}）`
-          : `（附上${isImage ? '圖片' : '文件'}：${label}，請參考內容回答）`
+          ? `${message}（已附上${isImage ? '圖片' : '文件'}：${file.name}）`
+          : `（附上${isImage ? '圖片' : '文件'}：${file.name}，請參考內容回答）`
         if (isImage) imageUrl = URL.createObjectURL(file)
       }
 
@@ -137,7 +155,11 @@ export default function App() {
           ? [{ role: 'assistant', content: `本次變動：\n${changes.map((c) => `・${c}`).join('\n')}` }]
           : []
 
-      setHighlightedKeys(getChangedCellKeys(beforeTestCases, res.test_cases))
+      const changedKeys = getChangedCellKeys(beforeTestCases, res.test_cases)
+      setHighlightedKeys(changedKeys)
+      setPreviousValues(getPreviousValues(beforeTestCases, res.test_cases))
+      scrollToFirstChange(changedKeys)
+
       setChatLog((prev) => [...prev, ...changeSummary, ...describeResult(res)])
     } catch (err) {
       setError(err instanceof Error ? err.message : '送出訊息失敗')
@@ -147,7 +169,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <div className={stage === 'workspace' ? 'app-shell app-shell-wide' : 'app-shell'}>
       <h1>測試用例自動產生</h1>
       <p className="subtitle">上傳需求文件或 UI 截圖，自動生成可編輯的測試用例。</p>
 
@@ -164,17 +186,29 @@ export default function App() {
       )}
 
       {stage === 'workspace' && result && sessionId && (
-        <>
-          <ChatPanel log={chatLog} busy={busy} onSend={handleSendMessage} />
-          <TestCaseTable
-            testCases={result.test_cases}
-            onChange={(testCases) => setResult({ ...result, test_cases: testCases })}
-            highlightedKeys={highlightedKeys}
-            onFieldFocus={clearHighlight}
-          />
-          <ExportButton sessionId={sessionId} result={result} onError={setError} />
-        </>
+        <div className="workspace-layout">
+          <div className="workspace-chat-col">
+            <button className="secondary materials-toggle" onClick={() => setShowMaterials(true)}>
+              📎 查看一開始的素材（{materials.length}）
+            </button>
+            <ChatPanel log={chatLog} busy={busy} onSend={handleSendMessage} />
+          </div>
+          <div className="workspace-table-col">
+            <TestCaseTable
+              testCases={result.test_cases}
+              onChange={(testCases) => setResult({ ...result, test_cases: testCases })}
+              highlightedKeys={highlightedKeys}
+              previousValues={previousValues}
+              onFieldFocus={clearHighlight}
+            />
+            <ExportButton sessionId={sessionId} result={result} onError={setError} />
+          </div>
+        </div>
       )}
-    </>
+
+      {showMaterials && (
+        <MaterialsModal materials={materials} onClose={() => setShowMaterials(false)} />
+      )}
+    </div>
   )
 }
