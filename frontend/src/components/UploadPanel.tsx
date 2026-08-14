@@ -8,7 +8,9 @@ interface TextField {
   value: string
 }
 
-let nextFieldId = 1
+function nextFieldId(fields: TextField[]): number {
+  return fields.reduce((max, f) => Math.max(max, f.id), 0) + 1
+}
 
 interface UploadPanelProps {
   materials: UploadedMaterial[]
@@ -20,7 +22,7 @@ interface UploadPanelProps {
 
 export function UploadPanel({ materials, busy, onUpload, onAddText, onGenerate }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [textFields, setTextFields] = useState<TextField[]>([{ id: nextFieldId++, value: '' }])
+  const [textFields, setTextFields] = useState<TextField[]>(() => [{ id: 1, value: '' }])
   const [addingId, setAddingId] = useState<number | null>(null)
 
   const handleFilesSelected = (fileList: FileList | null) => {
@@ -34,7 +36,7 @@ export function UploadPanel({ materials, busy, onUpload, onAddText, onGenerate }
   }
 
   const addField = () => {
-    setTextFields((fields) => [...fields, { id: nextFieldId++, value: '' }])
+    setTextFields((fields) => [...fields, { id: nextFieldId(fields), value: '' }])
   }
 
   const removeField = (id: number) => {
@@ -48,7 +50,7 @@ export function UploadPanel({ materials, busy, onUpload, onAddText, onGenerate }
       await onAddText(`欄位${field.id}`, field.value.trim())
       setTextFields((fields) => {
         const remaining = fields.filter((f) => f.id !== field.id)
-        return remaining.length > 0 ? remaining : [{ id: nextFieldId++, value: '' }]
+        return remaining.length > 0 ? remaining : [{ id: nextFieldId(remaining), value: '' }]
       })
     } finally {
       setAddingId(null)
