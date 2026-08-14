@@ -11,6 +11,7 @@ import { ChatPanel } from './components/ChatPanel'
 import { ExportButton } from './components/ExportButton'
 import { TestCaseTable } from './components/TestCaseTable'
 import { UploadPanel, type TextMaterialDraft } from './components/UploadPanel'
+import { diffTestCases } from './diffTestCases'
 import type { ChatMessage, GenerationResult, UploadedMaterial } from './types'
 
 type Stage = 'upload' | 'workspace'
@@ -116,9 +117,17 @@ export default function App() {
         { role: 'user', content: message || (file ? `（附上：${file.name}）` : ''), imageUrl },
       ])
 
-      const res = await sendChatMessage(sessionId, finalMessage, result.test_cases)
+      const beforeTestCases = result.test_cases
+      const res = await sendChatMessage(sessionId, finalMessage, beforeTestCases)
       setResult(res)
-      setChatLog((prev) => [...prev, ...describeResult(res)])
+
+      const changes = diffTestCases(beforeTestCases, res.test_cases)
+      const changeSummary: ChatMessage[] =
+        changes.length > 0
+          ? [{ role: 'assistant', content: `本次變動：\n${changes.map((c) => `・${c}`).join('\n')}` }]
+          : []
+
+      setChatLog((prev) => [...prev, ...changeSummary, ...describeResult(res)])
     } catch (err) {
       setError(err instanceof Error ? err.message : '送出訊息失敗')
     } finally {
