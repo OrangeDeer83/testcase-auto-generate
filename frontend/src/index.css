@@ -21,22 +21,39 @@ body {
 
 .app-shell.app-shell-wide {
   max-width: 1800px;
+  padding-top: 0;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #eef1f5;
+}
+
+.app-shell.app-shell-wide .app-header {
+  padding-top: 14px;
+  padding-bottom: 8px;
+}
+
+.app-shell.app-shell-wide h1 {
+  margin-bottom: 0;
 }
 
 .workspace-layout {
   display: grid;
   grid-template-columns: minmax(480px, 34%) minmax(0, 1fr);
-  gap: 16px;
+  gap: 28px;
   align-items: start;
 }
 
 .workspace-chat-col {
   position: sticky;
-  top: 16px;
+  top: 69px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 69px - 16px);
 }
 
 .workspace-chat-col .panel {
@@ -59,6 +76,8 @@ body {
 
 .workspace-table-col {
   min-width: 0;
+  padding-left: 28px;
+  border-left: 1px solid #d7dee6;
 }
 
 @media (max-width: 900px) {
@@ -73,6 +92,13 @@ body {
 
   .workspace-chat-col .chat-log {
     max-height: 400px;
+  }
+
+  .workspace-table-col {
+    padding-left: 0;
+    border-left: none;
+    padding-top: 20px;
+    border-top: 1px solid #d7dee6;
   }
 }
 
@@ -228,6 +254,45 @@ button.secondary:hover:not(:disabled) {
 
 .chat-entry.entry-assistant {
   align-self: flex-start;
+}
+
+.chat-entry.has-questions {
+  max-width: 100%;
+  width: 100%;
+}
+
+.question-list {
+  background: #e4e9ee;
+  border-radius: 4px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.question-list-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #405063;
+}
+
+.question-list-item {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #1c2733;
+}
+
+.question-index {
+  font-weight: 700;
+  color: #14304d;
+  margin-right: 2px;
+}
+
+.question-context {
+  display: block;
+  color: #8896a5;
+  font-size: 0.74rem;
+  margin-top: 2px;
 }
 
 .chat-bubble {

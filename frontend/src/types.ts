@@ -29,6 +29,7 @@ export interface ChatMessage {
   content: string
   context?: string
   imageUrl?: string
+  questions?: ClarificationQuestion[]
 }
 
 export interface UploadedMaterial {

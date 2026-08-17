@@ -20,11 +20,13 @@ type Stage = 'upload' | 'workspace'
 
 function describeResult(result: GenerationResult): ChatMessage[] {
   if (result.clarification_questions.length > 0) {
-    return result.clarification_questions.map((q) => ({
-      role: 'assistant' as const,
-      content: q.question,
-      context: q.context || undefined,
-    }))
+    return [
+      {
+        role: 'assistant' as const,
+        content: '',
+        questions: result.clarification_questions,
+      },
+    ]
   }
   return [
     {
@@ -170,8 +172,12 @@ export default function App() {
 
   return (
     <div className={stage === 'workspace' ? 'app-shell app-shell-wide' : 'app-shell'}>
-      <h1>測試用例自動產生</h1>
-      <p className="subtitle">上傳需求文件或 UI 截圖，自動生成可編輯的測試用例。</p>
+      <div className="app-header">
+        <h1>測試用例自動產生</h1>
+        {stage === 'upload' && (
+          <p className="subtitle">上傳需求文件或 UI 截圖，自動生成可編輯的測試用例。</p>
+        )}
+      </div>
 
       {error && <div className="error-banner">{error}</div>}
 

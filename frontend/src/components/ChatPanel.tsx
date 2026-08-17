@@ -70,12 +70,33 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
 
       <div className="chat-log">
         {log.map((entry, idx) => (
-          <div key={idx} className={`chat-entry entry-${entry.role}`}>
-            <div className={`chat-bubble ${entry.role === 'user' ? 'answer' : 'question'}`}>
-              {entry.content}
-              {entry.imageUrl && <img src={entry.imageUrl} alt="附加圖片" />}
-            </div>
-            {entry.context && <div className="chat-bubble context">依據：{entry.context}</div>}
+          <div
+            key={idx}
+            className={`chat-entry entry-${entry.role}${entry.questions ? ' has-questions' : ''}`}
+          >
+            {entry.questions ? (
+              <div className="question-list">
+                <div className="question-list-title">
+                  {entry.questions.length > 1
+                    ? `有 ${entry.questions.length} 個問題需要您協助確認：`
+                    : '有一個問題需要您協助確認：'}
+                </div>
+                {entry.questions.map((q, qIdx) => (
+                  <div className="question-list-item" key={q.id}>
+                    <span className="question-index">Q{qIdx + 1}.</span> {q.question}
+                    {q.context && <span className="question-context">依據：{q.context}</span>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className={`chat-bubble ${entry.role === 'user' ? 'answer' : 'question'}`}>
+                  {entry.content}
+                  {entry.imageUrl && <img src={entry.imageUrl} alt="附加圖片" />}
+                </div>
+                {entry.context && <div className="chat-bubble context">依據：{entry.context}</div>}
+              </>
+            )}
           </div>
         ))}
         {busy && (
