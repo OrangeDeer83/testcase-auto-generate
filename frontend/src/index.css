@@ -22,16 +22,27 @@ body {
 .app-shell.app-shell-wide {
   max-width: 1800px;
   padding-top: 0;
+  padding-bottom: 20px;
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .app-header {
-  position: sticky;
-  top: 0;
-  z-index: 5;
   background: #eef1f5;
 }
 
+.app-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .app-shell.app-shell-wide .app-header {
+  flex-shrink: 0;
   padding-top: 14px;
   padding-bottom: 8px;
 }
@@ -40,20 +51,23 @@ body {
   margin-bottom: 0;
 }
 
+/* workspace 階段整個版面固定在視窗高度內，只有右側用例表格自己捲動，
+   對話欄的位置完全不受表格內容多寡影響，不會有捲到底時跟著挪動的情況。 */
 .workspace-layout {
   display: grid;
   grid-template-columns: minmax(480px, 34%) minmax(0, 1fr);
   gap: 28px;
   align-items: start;
+  flex: 1;
+  min-height: 0;
 }
 
 .workspace-chat-col {
-  position: sticky;
-  top: 69px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: calc(100vh - 69px - 16px);
+  height: 100%;
+  min-height: 0;
 }
 
 .workspace-chat-col .panel {
@@ -72,22 +86,36 @@ body {
 
 .materials-toggle {
   align-self: flex-start;
+  flex-shrink: 0;
 }
 
 .workspace-table-col {
   min-width: 0;
+  height: 100%;
   padding-left: 28px;
+  padding-bottom: 4px;
   border-left: 1px solid #d7dee6;
+  overflow-y: auto;
 }
 
 @media (max-width: 900px) {
+  .app-shell.app-shell-wide {
+    height: auto;
+    overflow: visible;
+    display: block;
+  }
+
+  .app-header {
+    padding-bottom: 12px;
+  }
+
   .workspace-layout {
     grid-template-columns: 1fr;
+    flex: none;
   }
 
   .workspace-chat-col {
-    position: static;
-    max-height: none;
+    height: auto;
   }
 
   .workspace-chat-col .chat-log {
@@ -95,6 +123,8 @@ body {
   }
 
   .workspace-table-col {
+    height: auto;
+    overflow-y: visible;
     padding-left: 0;
     border-left: none;
     padding-top: 20px;

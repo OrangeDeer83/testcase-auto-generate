@@ -114,6 +114,19 @@ export default function App() {
     }
   }
 
+  const handleReset = () => {
+    if (!window.confirm('確定要重置嗎？目前的素材與測試用例都會被清空，且無法復原。')) return
+    setSessionId(null)
+    setMaterials([])
+    setStage('upload')
+    setError(null)
+    setResult(null)
+    setChatLog([])
+    setHighlightedKeys(new Set())
+    setPreviousValues(new Map())
+    setShowMaterials(false)
+  }
+
   const scrollToFirstChange = (keys: Set<string>) => {
     const first = Array.from(keys)[0]
     if (!first) return
@@ -173,7 +186,14 @@ export default function App() {
   return (
     <div className={stage === 'workspace' ? 'app-shell app-shell-wide' : 'app-shell'}>
       <div className="app-header">
-        <h1>測試用例自動產生</h1>
+        <div className="app-header-row">
+          <h1>測試用例自動產生</h1>
+          {stage === 'workspace' && (
+            <button className="secondary" onClick={handleReset}>
+              🔄 重置，開始新的測試用例
+            </button>
+          )}
+        </div>
         {stage === 'upload' && (
           <p className="subtitle">上傳需求文件或 UI 截圖，自動生成可編輯的測試用例。</p>
         )}
