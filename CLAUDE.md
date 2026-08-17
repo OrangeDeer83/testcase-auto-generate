@@ -4,7 +4,7 @@
 
 ## 這是什麼
 
-依據需求文件（PDF/Word/Markdown/貼上的文字）跟 UI 截圖，透過公司內部部署的 LLM 自動產出測試用例。核心原則：**LLM 不可以亂猜**，資訊不足就要用對話方式問清楚，使用者也可以隨時用聊天下指令請它批次修改多筆用例。
+依據需求文件（PDF/Word/Excel/Markdown/貼上的文字）跟 UI 截圖，透過公司內部部署的 LLM 自動產出測試用例，可匯出成 Markdown 或 Excel（.xlsx，欄位對應公司用例管理系統的匯入格式：用例名稱/所屬模塊/前置條件/步驟描述/預期結果/用例等級/備註）。核心原則：**LLM 不可以亂猜**，資訊不足就要用對話方式問清楚，使用者也可以隨時用聊天下指令請它批次修改多筆用例。
 
 ## 現在的狀態
 
@@ -45,12 +45,13 @@ npm run dev
 
 ```
 backend/app/
-  routers/        upload（含文字/GET 素材列表）、generate、chat、export
+  routers/        upload（含文字/GET 素材列表）、generate、chat、export（/export 匯出 Markdown、/export/excel 匯出 Excel）
   services/
-    parsers/       PDF/Word/Markdown/圖片 解析
+    parsers/       PDF/Word/Excel/Markdown/圖片 解析
     llm_client.py  OpenAI 相容 client（支援 vision），呼叫前後會寫 log
     prompt_builder.py  SYSTEM_PROMPT（初次產生）+ SYSTEM_PROMPT_CHAT（對話式編輯）
-  models/          Pydantic schema（ParsedMaterial 有 id、TestCase 沒有 id）
+    excel_export.py    TestCase 清單 → .xlsx（sheet「Test Cases」，欄位對應用例管理系統匯入格式）
+  models/          Pydantic schema（ParsedMaterial 有 id、TestCase 沒有 id，欄位含 module/notes）
 frontend/src/
   App.tsx          主要狀態機：upload → workspace 兩階段
   diffTestCases.ts 純前端比對聊天前後 test_cases 差異（依用例「名稱」配對，不是穩定 id）
@@ -60,7 +61,7 @@ frontend/src/
 ## 已知限制（如果使用者抱怨這些，不用意外）
 
 - `diffTestCases.ts` 用**用例名稱**配對變動前後是不是同一筆，如果 LLM 把某筆用例名稱也一起改了，會被誤判成「刪除舊的+新增新的」而不是「重新命名」。之前有丟一個背景任務評估要不要幫 `TestCase` 加穩定 id，可以去確認那個任務的結論。
-- PPT 檔案還不支援，只有 PDF/Word(.docx)/Markdown/純文字/PNG/JPG。
+- PPT 檔案還不支援，只有 PDF/Word(.docx)/Excel(.xlsx)/Markdown/純文字/PNG/JPG；.xls（舊版 Excel 格式）也不支援，只吃 .xlsx。
 - 優先級（priority）欄位是自由文字，沒有強制限定成 P0–P3 之類的清單。
 
 ## 給你（Claude）的提醒
