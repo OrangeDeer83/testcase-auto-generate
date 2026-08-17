@@ -50,6 +50,9 @@ export function diffTestCases(before: TestCase[], after: TestCase[]): string[] {
     if (!prev) continue
 
     const fieldNotes: string[] = []
+    if (prev.module !== tc.module) {
+      fieldNotes.push('所屬模塊已更新')
+    }
     if (prev.priority !== tc.priority) {
       fieldNotes.push(`優先級從 ${prev.priority || '（空）'} 改成 ${tc.priority || '（空）'}`)
     }
@@ -57,6 +60,9 @@ export function diffTestCases(before: TestCase[], after: TestCase[]): string[] {
       fieldNotes.push('前置條件已更新')
     }
     fieldNotes.push(...describeStepsDiff(prev, tc))
+    if (prev.notes !== tc.notes) {
+      fieldNotes.push('備註已更新')
+    }
 
     if (fieldNotes.length > 0) {
       changes.push(`「${tc.name}」${fieldNotes.join('、')}`)
@@ -87,8 +93,10 @@ export function getChangedCellKeys(before: TestCase[], after: TestCase[]): Set<s
       return
     }
 
+    if (prev.module !== tc.module) keys.add(`case:${caseIndex}:module`)
     if (prev.priority !== tc.priority) keys.add(`case:${caseIndex}:priority`)
     if (prev.preconditions !== tc.preconditions) keys.add(`case:${caseIndex}:preconditions`)
+    if (prev.notes !== tc.notes) keys.add(`case:${caseIndex}:notes`)
 
     tc.steps.forEach((step, stepIndex) => {
       const prevStep = prev.steps[stepIndex]
@@ -121,11 +129,17 @@ export function getPreviousValues(before: TestCase[], after: TestCase[]): Map<st
     const prev = beforeByName.get(tc.name)
     if (!prev) return
 
+    if (prev.module !== tc.module) {
+      values.set(`case:${caseIndex}:module`, prev.module)
+    }
     if (prev.priority !== tc.priority) {
       values.set(`case:${caseIndex}:priority`, prev.priority)
     }
     if (prev.preconditions !== tc.preconditions) {
       values.set(`case:${caseIndex}:preconditions`, prev.preconditions)
+    }
+    if (prev.notes !== tc.notes) {
+      values.set(`case:${caseIndex}:notes`, prev.notes)
     }
 
     tc.steps.forEach((step, stepIndex) => {

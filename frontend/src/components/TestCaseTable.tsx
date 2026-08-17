@@ -13,7 +13,14 @@ function emptyStep(stepNo: number): TestStep {
 }
 
 function emptyCase(): TestCase {
-  return { name: '新測試用例', preconditions: '', priority: 'P2', steps: [emptyStep(1)] }
+  return {
+    name: '新測試用例',
+    module: '',
+    preconditions: '',
+    priority: 'P2',
+    notes: '',
+    steps: [emptyStep(1)],
+  }
 }
 
 export function TestCaseTable({
@@ -88,6 +95,23 @@ export function TestCaseTable({
           </div>
 
           <div className="field-row">
+            <label style={{ flex: 1 }}>
+              所屬模塊
+              <input
+                id={`field-case:${caseIndex}:module`}
+                className={isHighlighted(`case:${caseIndex}:module`) ? 'cell-highlight' : ''}
+                value={testCase.module}
+                onChange={(e) => updateCase(caseIndex, { module: e.target.value })}
+                onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:module`])}
+                placeholder="例如 /模組/子功能"
+              />
+              {isHighlighted(`case:${caseIndex}:module`) &&
+                previousValueOf(`case:${caseIndex}:module`) !== undefined && (
+                  <div className="previous-value">
+                    原本：{previousValueOf(`case:${caseIndex}:module`) || '（空）'}
+                  </div>
+                )}
+            </label>
             <label>
               優先級
               <input
@@ -204,6 +228,23 @@ export function TestCaseTable({
               + 新增步驟
             </button>
           </div>
+
+          <label style={{ display: 'block', marginTop: 12 }}>
+            備註
+            <textarea
+              id={`field-case:${caseIndex}:notes`}
+              className={isHighlighted(`case:${caseIndex}:notes`) ? 'cell-highlight' : ''}
+              value={testCase.notes}
+              onChange={(e) => updateCase(caseIndex, { notes: e.target.value })}
+              onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:notes`])}
+            />
+            {isHighlighted(`case:${caseIndex}:notes`) &&
+              previousValueOf(`case:${caseIndex}:notes`) !== undefined && (
+                <div className="previous-value">
+                  原本：{previousValueOf(`case:${caseIndex}:notes`) || '（空）'}
+                </div>
+              )}
+          </label>
         </div>
       ))}
 

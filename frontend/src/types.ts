@@ -6,9 +6,11 @@ export interface TestStep {
 
 export interface TestCase {
   name: string
+  module: string
   preconditions: string
   steps: TestStep[]
   priority: string
+  notes: string
 }
 
 export interface ClarificationQuestion {

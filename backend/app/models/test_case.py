@@ -11,9 +11,11 @@ class TestStep(BaseModel):
 
 class TestCase(BaseModel):
     name: str
+    module: str = ""
     preconditions: str = ""
     steps: list[TestStep]
     priority: str
+    notes: str = ""
 
 
 class ClarificationQuestion(BaseModel):

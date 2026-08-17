@@ -10,6 +10,8 @@ def to_markdown(test_cases: list[TestCase]) -> str:
 
     for idx, case in enumerate(test_cases, start=1):
         lines = [f"## {idx}. {case.name}", "", f"- 優先級：{case.priority}"]
+        if case.module:
+            lines.append(f"- 所屬模塊：{case.module}")
         if case.preconditions:
             lines.append(f"- 前置條件：{case.preconditions}")
         lines.append("")
@@ -20,6 +22,9 @@ def to_markdown(test_cases: list[TestCase]) -> str:
                 f"| {step.step_no} | {_escape_cell(step.description)} "
                 f"| {_escape_cell(step.expected_result)} |"
             )
+        if case.notes:
+            lines.append("")
+            lines.append(f"- 備註：{case.notes}")
         lines.append("")
         sections.append("\n".join(lines))
 
