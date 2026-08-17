@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.models.material import ParsedMaterial
 from app.services.parsers.docx_parser import extract_docx_text
+from app.services.parsers.excel_parser import extract_excel_text
 from app.services.parsers.image_parser import to_image_data_url
 from app.services.parsers.markdown_parser import extract_markdown_text
 from app.services.parsers.pdf_parser import extract_pdf_text
@@ -21,6 +22,8 @@ def parse_upload(filename: str, content: bytes) -> ParsedMaterial:
         return ParsedMaterial(filename=filename, kind="text", text=extract_pdf_text(content))
     if ext == ".docx":
         return ParsedMaterial(filename=filename, kind="text", text=extract_docx_text(content))
+    if ext == ".xlsx":
+        return ParsedMaterial(filename=filename, kind="text", text=extract_excel_text(content))
     if ext in (".md", ".markdown", ".txt"):
         return ParsedMaterial(filename=filename, kind="text", text=extract_markdown_text(content))
     if ext in SUPPORTED_IMAGE_EXTENSIONS:

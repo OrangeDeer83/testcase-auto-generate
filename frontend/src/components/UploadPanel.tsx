@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { UploadedMaterial } from '../types'
 
-const ACCEPTED_EXTENSIONS = '.pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg'
+const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
 
 interface TextField {
   id: number
@@ -64,7 +64,7 @@ export function UploadPanel({
     <div className="panel">
       <h2>1. 上傳素材</h2>
       <p className="subtitle">
-        支援需求規格文件（PDF / Word .docx / Markdown / 純文字）與 UI 截圖（PNG / JPG），可一次上傳多個檔案。
+        支援需求規格文件（PDF / Word .docx / Excel .xlsx / Markdown / 純文字）與 UI 截圖（PNG / JPG），可一次上傳多個檔案。
       </p>
 
       <input
