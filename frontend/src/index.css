@@ -20,12 +20,12 @@ body {
 }
 
 .app-shell.app-shell-wide {
-  max-width: 1400px;
+  max-width: 1800px;
 }
 
 .workspace-layout {
   display: grid;
-  grid-template-columns: 420px 1fr;
+  grid-template-columns: minmax(480px, 34%) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -338,6 +338,29 @@ table.testcase-table textarea {
   font-size: 0.84rem;
   background: transparent;
   transition: background-color 1.2s ease;
+}
+
+table.testcase-table textarea,
+.auto-textarea {
+  resize: none;
+  overflow: hidden;
+}
+
+.notes-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #c3cdd8;
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 0.84rem;
+  margin-top: 4px;
+}
+
+.notes-textarea:focus {
+  outline: none;
+  border-color: #14304d;
 }
 
 table.testcase-table input:focus,

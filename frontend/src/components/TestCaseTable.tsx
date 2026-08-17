@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react'
 import type { TestCase, TestStep } from '../types'
 
 interface TestCaseTableProps {
@@ -6,6 +7,40 @@ interface TestCaseTableProps {
   highlightedKeys?: Set<string>
   previousValues?: Map<string, string>
   onFieldFocus?: (keys: string[]) => void
+}
+
+interface AutoTextAreaProps {
+  id?: string
+  className?: string
+  value: string
+  placeholder?: string
+  onChange: (value: string) => void
+  onFocus?: () => void
+}
+
+/** 高度自動貼合內容的 textarea，不提供手動拖拉調整大小的控制點。 */
+function AutoTextArea({ id, className, value, placeholder, onChange, onFocus }: AutoTextAreaProps) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [value])
+
+  return (
+    <textarea
+      ref={ref}
+      id={id}
+      rows={1}
+      className={`auto-textarea${className ? ` ${className}` : ''}`}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      onFocus={onFocus}
+    />
+  )
 }
 
 function emptyStep(stepNo: number): TestStep {
@@ -170,7 +205,7 @@ export function TestCaseTable({
                   >
                     <td>{step.step_no}</td>
                     <td>
-                      <textarea
+                      <AutoTextArea
                         id={`field-${stepKey}:description`}
                         className={
                           rowHighlighted || isHighlighted(`${stepKey}:description`)
@@ -178,8 +213,8 @@ export function TestCaseTable({
                             : ''
                         }
                         value={step.description}
-                        onChange={(e) =>
-                          updateStep(caseIndex, stepIndex, { description: e.target.value })
+                        onChange={(value) =>
+                          updateStep(caseIndex, stepIndex, { description: value })
                         }
                         onFocus={focusClears([
                           `case:${caseIndex}`,
@@ -192,7 +227,7 @@ export function TestCaseTable({
                       )}
                     </td>
                     <td>
-                      <textarea
+                      <AutoTextArea
                         id={`field-${stepKey}:expected_result`}
                         className={
                           rowHighlighted || isHighlighted(`${stepKey}:expected_result`)
@@ -200,8 +235,8 @@ export function TestCaseTable({
                             : ''
                         }
                         value={step.expected_result}
-                        onChange={(e) =>
-                          updateStep(caseIndex, stepIndex, { expected_result: e.target.value })
+                        onChange={(value) =>
+                          updateStep(caseIndex, stepIndex, { expected_result: value })
                         }
                         onFocus={focusClears([
                           `case:${caseIndex}`,
@@ -231,11 +266,11 @@ export function TestCaseTable({
 
           <label style={{ display: 'block', marginTop: 12 }}>
             備註
-            <textarea
+            <AutoTextArea
               id={`field-case:${caseIndex}:notes`}
-              className={isHighlighted(`case:${caseIndex}:notes`) ? 'cell-highlight' : ''}
+              className={`notes-textarea${isHighlighted(`case:${caseIndex}:notes`) ? ' cell-highlight' : ''}`}
               value={testCase.notes}
-              onChange={(e) => updateCase(caseIndex, { notes: e.target.value })}
+              onChange={(value) => updateCase(caseIndex, { notes: value })}
               onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:notes`])}
             />
             {isHighlighted(`case:${caseIndex}:notes`) &&
