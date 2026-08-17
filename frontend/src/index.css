@@ -193,6 +193,11 @@ button.secondary:hover:not(:disabled) {
   background: #d7dee6;
 }
 
+.export-buttons {
+  display: flex;
+  gap: 8px;
+}
+
 .error-banner {
   background: #fdecea;
   color: #9a2b1f;

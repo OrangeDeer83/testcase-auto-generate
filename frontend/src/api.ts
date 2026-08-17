@@ -96,3 +96,12 @@ export async function exportMarkdown(sessionId: string): Promise<Blob> {
   }
   return response.blob()
 }
+
+export async function exportExcel(sessionId: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/export/excel`)
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }))
+    throw new Error(body.detail ?? `匯出失敗（${response.status}）`)
+  }
+  return response.blob()
+}
