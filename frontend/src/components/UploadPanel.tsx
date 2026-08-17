@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react'
+import type { ClipboardEvent } from 'react'
+import { getPastedImageFile } from '../clipboardImage'
 import type { UploadedMaterial } from '../types'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
@@ -53,6 +55,13 @@ export function UploadPanel({
     setTextFields((fields) => (fields.length > 1 ? fields.filter((f) => f.id !== id) : fields))
   }
 
+  const handlePasteImage = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const file = getPastedImageFile(e.clipboardData, '截圖')
+    if (!file) return
+    e.preventDefault()
+    onUpload([file])
+  }
+
   const nonEmptyFields = textFields.filter((f) => f.value.trim())
   const readyCount = materials.length + nonEmptyFields.length
 
@@ -87,8 +96,9 @@ export function UploadPanel({
             <textarea
               value={field.value}
               disabled={busy}
-              placeholder="貼上需求文字…"
+              placeholder="貼上需求文字…也可以直接貼上截圖（Ctrl+V）"
               onChange={(e) => updateField(field.id, e.target.value)}
+              onPaste={handlePasteImage}
             />
             {textFields.length > 1 && (
               <button

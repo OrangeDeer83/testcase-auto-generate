@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ClipboardEvent } from 'react'
+import { getPastedImageFile } from '../clipboardImage'
 import type { ChatMessage } from '../types'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
@@ -26,12 +28,23 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
 
   const canSend = (draft.trim() || attachedFile) && !busy
 
+  const attachFile = (file: File) => {
+    setAttachedFile(file)
+    setAttachedPreviewUrl(isImageFile(file) ? URL.createObjectURL(file) : null)
+  }
+
   const handleAttachFile = (fileList: FileList | null) => {
     const file = fileList?.[0]
     if (!file) return
-    setAttachedFile(file)
-    setAttachedPreviewUrl(isImageFile(file) ? URL.createObjectURL(file) : null)
+    attachFile(file)
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handlePasteImage = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const file = getPastedImageFile(e.clipboardData, '截圖')
+    if (!file) return
+    e.preventDefault()
+    attachFile(file)
   }
 
   const clearAttachment = () => {
@@ -105,8 +118,9 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
         <textarea
           value={draft}
           disabled={busy}
-          placeholder="輸入回答，或下達修改指令，例如「把用例 3 的步驟 2 改成…」…"
+          placeholder="輸入回答，或下達修改指令…也可以直接貼上截圖（Ctrl+V）"
           onChange={(e) => setDraft(e.target.value)}
+          onPaste={handlePasteImage}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
