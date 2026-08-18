@@ -157,7 +157,7 @@ export async function addTextMaterial(
 export async function updateMaterial(
   projectId: string,
   materialId: string,
-  updates: { filename?: string; description?: string },
+  updates: { filename?: string; description?: string; text?: string },
 ): Promise<UploadedMaterial> {
   const response = await fetch(
     `${API_BASE_URL}/api/projects/${projectId}/materials/${materialId}`,

@@ -108,6 +108,7 @@ def add_text_material(project_id: str, payload: TextMaterialPayload):
 class MaterialUpdatePayload(BaseModel):
     filename: str | None = None
     description: str | None = None
+    text: str | None = None
 
 
 @router.patch("/{project_id}/materials/{material_id}", response_model=ParsedMaterial)
@@ -122,8 +123,15 @@ def update_material(project_id: str, material_id: str, payload: MaterialUpdatePa
 
     description = payload.description.strip() if payload.description is not None else None
 
+    text = None
+    if payload.text is not None:
+        existing = project_store.get_material(project_id, material_id)
+        if existing and existing.kind != "text":
+            raise HTTPException(status_code=400, detail="只有純文字素材可以直接修改內容")
+        text = payload.text
+
     material = project_store.update_material(
-        project_id, material_id, filename=filename, description=description
+        project_id, material_id, filename=filename, description=description, text=text
     )
     if not material:
         raise HTTPException(status_code=404, detail="找不到這個素材")

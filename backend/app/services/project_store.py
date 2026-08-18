@@ -102,7 +102,11 @@ def add_material(project_id: str, material: ParsedMaterial) -> ParsedMaterial | 
 
 
 def update_material(
-    project_id: str, material_id: str, filename: str | None = None, description: str | None = None
+    project_id: str,
+    material_id: str,
+    filename: str | None = None,
+    description: str | None = None,
+    text: str | None = None,
 ) -> ParsedMaterial | None:
     with paths.lock():
         material = get_material(project_id, material_id)
@@ -112,6 +116,8 @@ def update_material(
             material.filename = filename
         if description is not None:
             material.description = description
+        if text is not None:
+            material.text = text
         paths.atomic_write_json(paths.material_path(project_id, material_id), material)
         _touch_project(project_id)
     return material

@@ -88,7 +88,10 @@ export function ProjectPage() {
     }
   }
 
-  const handleUpdateMaterial = async (id: string, updates: { filename?: string; description?: string }) => {
+  const handleUpdateMaterial = async (
+    id: string,
+    updates: { filename?: string; description?: string; text?: string },
+  ) => {
     setError(null)
     try {
       await updateMaterial(projectId, id, updates)

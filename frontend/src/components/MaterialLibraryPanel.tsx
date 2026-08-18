@@ -3,6 +3,7 @@ import type { ClipboardEvent } from 'react'
 import { getPastedImageFile } from '../clipboardImage'
 import type { UploadedMaterial } from '../types'
 import { MaterialRow } from './MaterialRow'
+import { MaterialsModal } from './MaterialsModal'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
 
@@ -26,7 +27,7 @@ interface MaterialLibraryPanelProps {
   onUpload: (files: File[]) => void
   onAddText: (drafts: TextMaterialDraft[]) => void
   onRemoveMaterial: (id: string) => void
-  onUpdateMaterial: (id: string, updates: { filename?: string; description?: string }) => void
+  onUpdateMaterial: (id: string, updates: { filename?: string; description?: string; text?: string }) => void
 }
 
 export function MaterialLibraryPanel({
@@ -39,6 +40,7 @@ export function MaterialLibraryPanel({
 }: MaterialLibraryPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [textFields, setTextFields] = useState<TextField[]>(() => [{ id: 1, value: '' }])
+  const [showContent, setShowContent] = useState(false)
 
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
@@ -75,7 +77,14 @@ export function MaterialLibraryPanel({
 
   return (
     <div className="panel">
-      <h2>素材庫</h2>
+      <div className="app-header-row">
+        <h2>素材庫</h2>
+        {materials.length > 0 && (
+          <button className="secondary" onClick={() => setShowContent(true)}>
+            📎 檢視素材內容
+          </button>
+        )}
+      </div>
       <p className="subtitle">
         這個專案的所有對話共用同一個素材庫，上傳一次即可重複使用，不用每個對話都重新上傳。支援需求規格文件（PDF / Word .docx / Excel .xlsx / Markdown / 純文字）與 UI 截圖（PNG / JPG）。
       </p>
@@ -138,6 +147,14 @@ export function MaterialLibraryPanel({
             />
           ))}
         </ul>
+      )}
+
+      {showContent && (
+        <MaterialsModal
+          materials={materials}
+          title="專案素材庫"
+          onClose={() => setShowContent(false)}
+        />
       )}
     </div>
   )

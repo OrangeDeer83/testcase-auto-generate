@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
+  addTextMaterial,
   generate,
   getConversation,
   getMaterials,
   saveChatLog,
   sendChatMessage,
   updateConversation,
+  updateMaterial,
   uploadMaterials,
 } from '../api'
 import { ChatPanel } from '../components/ChatPanel'
@@ -114,6 +116,49 @@ export function WorkspacePage() {
       await updateConversation(projectId, conversationId, { selectedMaterialIds: ids })
     } catch (err) {
       setError(err instanceof Error ? err.message : '更新素材選取失敗')
+    }
+  }
+
+  const handleUpdateMaterial = async (
+    id: string,
+    updates: { filename?: string; description?: string; text?: string },
+  ) => {
+    setError(null)
+    try {
+      await updateMaterial(projectId, id, updates)
+      setMaterials(await getMaterials(projectId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '更新素材失敗')
+    }
+  }
+
+  const handleAddFilesToSelector = async (files: File[]) => {
+    setError(null)
+    try {
+      const res = await uploadMaterials(projectId, files)
+      const refreshedMaterials = await getMaterials(projectId)
+      setMaterials(refreshedMaterials)
+      const newIds = res.uploaded.map((u) => u.id)
+      const nextSelected = [...selectedMaterialIds, ...newIds]
+      setSelectedMaterialIds(nextSelected)
+      await updateConversation(projectId, conversationId, { selectedMaterialIds: nextSelected })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '新增素材失敗')
+    }
+  }
+
+  const handleAddTextToSelector = async (label: string, content: string) => {
+    setError(null)
+    try {
+      const res = await addTextMaterial(projectId, label, content)
+      const refreshedMaterials = await getMaterials(projectId)
+      setMaterials(refreshedMaterials)
+      const newIds = res.uploaded.map((u) => u.id)
+      const nextSelected = [...selectedMaterialIds, ...newIds]
+      setSelectedMaterialIds(nextSelected)
+      await updateConversation(projectId, conversationId, { selectedMaterialIds: nextSelected })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '新增素材失敗')
     }
   }
 
@@ -229,6 +274,9 @@ export function WorkspacePage() {
             selectedIds={selectedMaterialIds}
             busy={busy}
             onChange={handleSelectedMaterialsChange}
+            onUpdateMaterial={handleUpdateMaterial}
+            onAddFiles={handleAddFilesToSelector}
+            onAddText={handleAddTextToSelector}
           />
           <div className="toolbar">
             <span className="subtitle">已選擇 {selectedMaterialIds.length} 項素材</span>
@@ -263,6 +311,7 @@ export function WorkspacePage() {
       {showMaterials && (
         <MaterialsModal
           materials={materials.filter((m) => selectedMaterialIds.includes(m.id))}
+          title="這個對話使用中的素材"
           onClose={() => setShowMaterials(false)}
         />
       )}
