@@ -30,3 +30,4 @@ Thumbs.db
 backend/uploads/
 backend/exports/
 backend/logs/
+backend/data/

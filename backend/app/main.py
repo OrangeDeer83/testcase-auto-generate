@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import export, generate, upload
+from app.routers import conversations, export, projects
 
 app = FastAPI(title="Testcase Auto Generate API")
 
@@ -14,8 +14,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(upload.router)
-app.include_router(generate.router)
+app.include_router(projects.router)
+app.include_router(conversations.router)
 app.include_router(export.router)
 
 
