@@ -6,6 +6,7 @@ import {
   generate,
   getMaterials,
   sendChatMessage,
+  updateMaterial,
   uploadMaterials,
 } from './api'
 import { ChatPanel } from './components/ChatPanel'
@@ -91,6 +92,20 @@ export default function App() {
       await refreshMaterials(sessionId)
     } catch (err) {
       setError(err instanceof Error ? err.message : '刪除素材失敗')
+    }
+  }
+
+  const handleUpdateMaterial = async (
+    id: string,
+    updates: { filename?: string; description?: string },
+  ) => {
+    if (!sessionId) return
+    setError(null)
+    try {
+      await updateMaterial(sessionId, id, updates)
+      await refreshMaterials(sessionId)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '更新素材失敗')
     }
   }
 
@@ -207,6 +222,7 @@ export default function App() {
           busy={busy}
           onUpload={handleUpload}
           onRemoveMaterial={handleRemoveMaterial}
+          onUpdateMaterial={handleUpdateMaterial}
           onGenerate={handleGenerate}
         />
       )}

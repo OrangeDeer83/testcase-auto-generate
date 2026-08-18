@@ -205,16 +205,67 @@ h1 {
 }
 
 .material-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid #e4e9ee;
+}
+
+.material-item-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 0;
-  border-bottom: 1px solid #e4e9ee;
+  gap: 8px;
   font-size: 0.88rem;
 }
 
+.material-icon {
+  flex-shrink: 0;
+}
+
+.material-name-input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  background: transparent;
+}
+
+.material-name-input:focus {
+  outline: none;
+  border-color: #14304d;
+  background: #fff;
+}
+
+.material-description-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  border: 1px solid #c3cdd8;
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: #33404f;
+  resize: vertical;
+  min-height: 36px;
+}
+
+.material-description-input:focus {
+  outline: none;
+  border-color: #14304d;
+}
+
+.material-detail-description {
+  color: #5b6b7d;
+  font-size: 0.82rem;
+  margin: 0 0 8px;
+}
+
 .material-remove {
+  flex-shrink: 0;
   padding: 4px 10px;
   font-size: 0.78rem;
 }

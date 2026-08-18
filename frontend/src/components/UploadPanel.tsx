@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { ClipboardEvent } from 'react'
 import { getPastedImageFile } from '../clipboardImage'
 import type { UploadedMaterial } from '../types'
+import { MaterialRow } from './MaterialRow'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
 
@@ -24,6 +25,7 @@ interface UploadPanelProps {
   busy: boolean
   onUpload: (files: File[]) => void
   onRemoveMaterial: (id: string) => void
+  onUpdateMaterial: (id: string, updates: { filename?: string; description?: string }) => void
   onGenerate: (textMaterials: TextMaterialDraft[]) => void
 }
 
@@ -32,6 +34,7 @@ export function UploadPanel({
   busy,
   onUpload,
   onRemoveMaterial,
+  onUpdateMaterial,
   onGenerate,
 }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -120,18 +123,13 @@ export function UploadPanel({
       {materials.length > 0 && (
         <ul className="material-list">
           {materials.map((material) => (
-            <li key={material.id}>
-              <span>
-                {material.kind === 'image' ? '🖼️' : '📄'} {material.filename}
-              </span>
-              <button
-                className="secondary material-remove"
-                disabled={busy}
-                onClick={() => onRemoveMaterial(material.id)}
-              >
-                刪除
-              </button>
-            </li>
+            <MaterialRow
+              key={material.id}
+              material={material}
+              busy={busy}
+              onRemove={onRemoveMaterial}
+              onUpdate={onUpdateMaterial}
+            />
           ))}
         </ul>
       )}

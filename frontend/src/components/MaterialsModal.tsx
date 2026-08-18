@@ -23,6 +23,9 @@ export function MaterialsModal({ materials, onClose }: MaterialsModalProps) {
             <div className="material-detail-title">
               {material.kind === 'image' ? '🖼️' : '📄'} {material.filename}
             </div>
+            {material.description && (
+              <p className="material-detail-description">說明：{material.description}</p>
+            )}
             {material.kind === 'image' && material.image_data_url && (
               <img src={material.image_data_url} alt={material.filename} />
             )}

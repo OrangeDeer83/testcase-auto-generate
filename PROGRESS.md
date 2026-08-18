@@ -19,6 +19,7 @@
 - [x] 修正 `/chat` 遺失上一輪待釐清問題的重大 bug：`/generate` 沒把問題寫進對話紀錄，導致模型完全不知道之前問過什麼，實測會把所有問題都默默清空（即使只回答了其中一個）。改成明確把 `session.last_result.clarification_questions` 傳給模型，並要求逐一核對使用者是否真的回答到；重跑測試（4 題只答 1 題）確認其餘 3 題正確保留
 - [x] 加上 debug log（`backend/logs/app.log`，不進 git）：記錄每次呼叫模型的 session id、送出內容摘要、原始回應、結果摘要，之後結果不符預期可以直接翻 log 對照，不用重新操作重現
 - [x] 新增 `GET /sessions/{id}/materials`，回傳完整素材內容（文字/圖片 data URL），供前端「查看一開始的素材」功能使用
+- [x] `ParsedMaterial` 加上 `description` 欄位，新增 `PATCH /sessions/{id}/materials/{material_id}` 端點可修改檔名/說明；`prompt_builder.build_material_content` 把使用者說明一併帶入送給模型的內容（`【檔案：xxx】\n使用者說明：...`），讓模型能把素材內容跟使用者補充的上下文綁在一起理解
 
 ## 前端
 - [x] Vite + React + TS 專案骨架（npm install / tsc -b / npm run build 皆通過）
@@ -38,6 +39,7 @@
 - [x] 聊天回覆後顯示測試用例的實際變動摘要（`diffTestCases.ts`，純前端依用例名稱比對前後差異），瀏覽器實測正確顯示「優先級從 P0 改成 P1、步驟 1、2 的內容有調整」
 - [x] 表格中高亮顯示本次聊天變動的具體儲存格（`getChangedCellKeys`），淡黃色底，持續到使用者點進該欄位才消失（不是倒數計時），瀏覽器實測畫面高亮位置與文字摘要一致
 - [x] workspace 階段改成左右並排（聊天固定在左邊、內部獨立捲動，不用每次都手動拉到最下面）；新增「查看一開始的素材」modal；表格高亮欄位下方用灰字顯示「原本：xxx」舊值；聊天造成用例變動時自動捲動到第一個變動處。瀏覽器實測四項皆正常運作
+- [x] 上傳素材列表每一項改成可編輯：檔名（inline 輸入框）與素材說明（選填 textarea），失焦即透過 PATCH 端點儲存；「查看一開始的素材」modal 同步顯示已填的說明。瀏覽器實測：改檔名、填說明皆正確存進後端 session，且會出現在送給模型的內容中。過程中發現一個真實 bug：`uvicorn --reload` 只偵測到最先儲存的那個檔案變更就重新載入，之後同批的另外兩個檔案變更沒被偵測到，導致新增的 PATCH 路由一度回傳 405；重新完整重啟後端後確認正常
 - [x] 支援上傳 Excel（.xlsx）當作素材：新增 `excel_parser.py`（openpyxl，逐工作表逐列轉成 `sheet | 欄1 | 欄2…` 文字），串進 `parse_upload` 的副檔名分派；瀏覽器/curl 實測上傳使用者提供的真實 Excel 測試用例範本，內容正確解析成文字素材
 - [x] 新增 Excel 匯出（`GET /export/excel`），欄位對應使用者提供的用例管理系統匯入格式：用例名稱/所屬模塊/前置條件/步驟描述/預期結果/用例等級/備註（sheet 名稱固定為「Test Cases」）。為此在 `TestCase` model 新增 `module`（所屬模塊，斜線階層路徑）與 `notes`（備註）兩個欄位，貫穿 prompt schema、聊天編輯規則、表格 UI（可編輯+高亮+舊值顯示）、diff 比對、Markdown 匯出；規則要求 LLM 判斷不出 module 時留空、不要編造，也不用為此提出澄清問題。瀏覽器實測：真實 LLM 產生用例時能自動填入所屬模塊（例如 `/登入功能`），Excel 匯出下載請求回傳 200 且欄位內容正確（步驟描述逐行 `[n] 描述`，預期結果只列有內容的步驟）
 

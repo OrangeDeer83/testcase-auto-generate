@@ -66,6 +66,33 @@ def add_text_material(session_id: str, payload: TextMaterialPayload):
     }
 
 
+class MaterialUpdatePayload(BaseModel):
+    filename: str | None = None
+    description: str | None = None
+
+
+@router.patch("/sessions/{session_id}/materials/{material_id}", response_model=ParsedMaterial)
+def update_material(session_id: str, material_id: str, payload: MaterialUpdatePayload):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session 不存在或已過期")
+
+    material = next((m for m in session.materials if m.id == material_id), None)
+    if not material:
+        raise HTTPException(status_code=404, detail="找不到這個素材")
+
+    if payload.filename is not None:
+        trimmed = payload.filename.strip()
+        if not trimmed:
+            raise HTTPException(status_code=400, detail="檔名不可為空")
+        material.filename = trimmed
+
+    if payload.description is not None:
+        material.description = payload.description.strip()
+
+    return material
+
+
 @router.delete("/sessions/{session_id}/materials/{material_id}")
 def delete_material(session_id: str, material_id: str):
     session = get_session(session_id)

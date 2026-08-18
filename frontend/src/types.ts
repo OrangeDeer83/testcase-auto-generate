@@ -38,4 +38,5 @@ export interface UploadedMaterial {
   kind: 'text' | 'image'
   text?: string
   image_data_url?: string
+  description: string
 }

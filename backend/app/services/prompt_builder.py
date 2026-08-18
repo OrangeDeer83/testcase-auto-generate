@@ -91,12 +91,14 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
 def build_material_content(materials: list[ParsedMaterial]) -> list[dict]:
     content: list[dict] = []
     for material in materials:
+        label = "檔案" if material.kind == "text" else "圖片"
+        header = f"【{label}：{material.filename}】"
+        if material.description:
+            header += f"\n使用者說明：{material.description}"
         if material.kind == "text":
-            content.append(
-                {"type": "text", "text": f"【檔案：{material.filename}】\n{material.text}"}
-            )
+            content.append({"type": "text", "text": f"{header}\n{material.text}"})
         else:
-            content.append({"type": "text", "text": f"【圖片：{material.filename}】"})
+            content.append({"type": "text", "text": header})
             content.append({"type": "image_url", "image_url": {"url": material.image_data_url}})
     return content
 

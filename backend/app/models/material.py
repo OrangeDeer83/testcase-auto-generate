@@ -10,3 +10,4 @@ class ParsedMaterial(BaseModel):
     kind: Literal["text", "image"]
     text: Optional[str] = None
     image_data_url: Optional[str] = None
+    description: str = ""

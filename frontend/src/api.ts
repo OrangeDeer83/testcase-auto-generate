@@ -43,6 +43,22 @@ export async function addTextMaterial(
   return handleResponse(response)
 }
 
+export async function updateMaterial(
+  sessionId: string,
+  materialId: string,
+  updates: { filename?: string; description?: string },
+): Promise<UploadedMaterial> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/sessions/${sessionId}/materials/${materialId}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    },
+  )
+  return handleResponse(response)
+}
+
 export async function deleteMaterial(sessionId: string, materialId: string): Promise<void> {
   const response = await fetch(
     `${API_BASE_URL}/api/sessions/${sessionId}/materials/${materialId}`,
