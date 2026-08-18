@@ -588,6 +588,36 @@ tr.cell-highlight td {
   white-space: pre-wrap;
 }
 
+.project-name-link {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #14304d;
+}
+
+.project-name-link:hover {
+  text-decoration: underline;
+}
+
+.material-selector-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.material-selector-item label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

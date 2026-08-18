@@ -10,7 +10,7 @@ export function MaterialsModal({ materials, onClose }: MaterialsModalProps) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>一開始提供的素材（共 {materials.length} 項）</h2>
+          <h2>這個對話使用中的素材（共 {materials.length} 項）</h2>
           <button className="secondary" onClick={onClose}>
             關閉
           </button>
