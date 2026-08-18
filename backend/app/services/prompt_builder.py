@@ -1,5 +1,7 @@
 import json
 
+from json_repair import repair_json
+
 from app.models.material import ParsedMaterial
 from app.models.test_case import ChatMessage, ClarificationQuestion, GenerationResult, TestCase
 
@@ -36,7 +38,8 @@ SYSTEM_PROMPT = """你是一位資深 QA 測試工程師，任務是根據使用
 4. test_cases 與 clarification_questions 可以同時存在：先產出目前能確定的用例，同時列出待釐清的問題。
 5. module 與 notes 屬於分類/補充性質的欄位，不影響測試邏輯正確性，判斷不出來時直接留空字串即可，不需要為此提出 clarification_questions。
 6. 所有文字使用繁體中文。
-7. 只回傳 JSON 本身。
+7. 任何字串欄位的內容裡都絕對不可以出現半形雙引號 " ——包含舉例、引用畫面文字、陣列/程式碼片段等情況。需要引用或舉例時一律改用全形「」，例如要表達陣列 ["A", "A"] 時要寫成「A、A」或 (A, A)，不可以直接把 " 寫進字串內容，否則會破壞 JSON 格式。
+8. 只回傳 JSON 本身。
 """
 
 SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用者以對話方式協作維護一份測試用例清單。
@@ -84,7 +87,8 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
    - 只有當使用者對某個問題明確表示不需要處理時（例如「不管這個」「先跳過」「這個不重要」「不需要」「不用管」），才可以把那個問題從 clarification_questions 移除，並在對應的測試用例中維持原本已知的資訊，不要自行補上答案。
    - 使用者的訊息如果同時包含新的疑慮或指示，除了處理上述判斷之外，也要正常反映在 test_cases 或新的 clarification_questions 上。
 6. 所有文字使用繁體中文。
-7. 只回傳 JSON 本身。
+7. 任何字串欄位的內容裡都絕對不可以出現半形雙引號 " ——包含舉例、引用畫面文字、陣列/程式碼片段等情況。需要引用或舉例時一律改用全形「」，例如要表達陣列 ["A", "A"] 時要寫成「A、A」或 (A, A)，不可以直接把 " 寫進字串內容，否則會破壞 JSON 格式。
+8. 只回傳 JSON 本身。
 """
 
 
@@ -167,7 +171,15 @@ def parse_generation_result(raw_response: str) -> GenerationResult:
 
     try:
         data = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise LLMResponseParseError(f"LLM 回傳內容不是合法 JSON：{exc}") from exc
+    except json.JSONDecodeError as original_exc:
+        # 模型偶爾會在字串內容中夾帶未跳脫的引號（例如舉例時寫 ["A", "A"]），
+        # 破壞 JSON 結構本身；先嘗試用 json_repair 修復常見的格式錯誤，
+        # 修不好才把原始的解析錯誤丟出去，不要吞掉真正的問題。
+        try:
+            data = json.loads(repair_json(text))
+        except (json.JSONDecodeError, ValueError):
+            raise LLMResponseParseError(
+                f"LLM 回傳內容不是合法 JSON：{original_exc}"
+            ) from original_exc
 
     return GenerationResult.model_validate(data)
