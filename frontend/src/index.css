@@ -239,6 +239,21 @@ h1 {
   flex-shrink: 0;
 }
 
+.material-thumbnail {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid #d7dee6;
+  cursor: pointer;
+}
+
+.material-thumbnail-preview img {
+  max-width: 100%;
+  border-radius: 3px;
+}
+
 .material-name-input {
   flex: 1;
   min-width: 0;

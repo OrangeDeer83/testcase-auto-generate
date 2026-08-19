@@ -27,6 +27,7 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
   const [nameBase, setNameBase] = useState(initialBase)
   const [description, setDescription] = useState(material.description)
   const [content, setContent] = useState(material.text ?? '')
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   // 改名如果因為名稱重複被後端拒絕，material.filename 不會變，這裡要跟著回復顯示，
   // 不能讓輸入框停在使用者剛剛打的（其實沒存成功的）名稱上。
@@ -62,7 +63,16 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
     <li className="material-item">
       <div className="material-item-row">
         {leadingControl}
-        <span className="material-icon">{isText ? '📄' : '🖼️'}</span>
+        {!isText && material.image_data_url ? (
+          <img
+            className="material-thumbnail"
+            src={material.image_data_url}
+            alt={material.filename}
+            onClick={() => setPreviewOpen(true)}
+          />
+        ) : (
+          <span className="material-icon">{isText ? '📄' : '🖼️'}</span>
+        )}
         <input
           className="material-name-input"
           value={nameBase}
@@ -99,6 +109,19 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
           onChange={(e) => setDescription(e.target.value)}
           onBlur={saveDescription}
         />
+      )}
+      {previewOpen && material.image_data_url && (
+        <div className="modal-overlay" onClick={() => setPreviewOpen(false)}>
+          <div className="modal-panel material-thumbnail-preview" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{material.filename}</h2>
+              <button className="secondary" onClick={() => setPreviewOpen(false)}>
+                關閉
+              </button>
+            </div>
+            <img src={material.image_data_url} alt={material.filename} />
+          </div>
+        </div>
       )}
     </li>
   )
