@@ -89,6 +89,41 @@ def get_material(project_id: str, material_id: str) -> ParsedMaterial | None:
     return paths.read_json(paths.material_path(project_id, material_id), ParsedMaterial)
 
 
+def _split_filename(filename: str) -> tuple[str, str]:
+    idx = filename.rfind(".")
+    if idx <= 0 or idx == len(filename) - 1:
+        return filename, ""
+    return filename[:idx], filename[idx:]
+
+
+def _existing_filenames(project_id: str, exclude_material_id: str | None = None) -> set[str]:
+    return {
+        m.filename.lower() for m in list_materials(project_id) if m.id != exclude_material_id
+    }
+
+
+def filename_exists(
+    project_id: str, filename: str, exclude_material_id: str | None = None
+) -> bool:
+    return filename.lower() in _existing_filenames(project_id, exclude_material_id)
+
+
+def make_unique_filename(
+    project_id: str, filename: str, exclude_material_id: str | None = None
+) -> str:
+    """素材名稱不能重複：自動加上 (2)、(3)... 直到不衝突為止，用於新增素材時避免打斷操作。"""
+    existing = _existing_filenames(project_id, exclude_material_id)
+    if filename.lower() not in existing:
+        return filename
+    base, ext = _split_filename(filename)
+    n = 2
+    while True:
+        candidate = f"{base} ({n}){ext}"
+        if candidate.lower() not in existing:
+            return candidate
+        n += 1
+
+
 def add_material(project_id: str, material: ParsedMaterial) -> ParsedMaterial | None:
     with paths.lock():
         project = get_project(project_id)

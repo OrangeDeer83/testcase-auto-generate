@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UploadedMaterial } from '../types'
 
@@ -6,7 +6,11 @@ interface MaterialRowProps {
   material: UploadedMaterial
   busy: boolean
   onRemove?: (id: string) => void
-  onUpdate: (id: string, updates: { filename?: string; description?: string; text?: string }) => void
+  /** 回傳是否成功——改檔名可能因為撞名被後端拒絕，呼叫端要讓輸入框知道要不要回復原值。 */
+  onUpdate: (
+    id: string,
+    updates: { filename?: string; description?: string; text?: string },
+  ) => Promise<boolean>
   /** 選用的前綴控制項，例如對話素材選取畫面裡用來勾選這個素材的 checkbox。 */
   leadingControl?: ReactNode
 }
@@ -24,15 +28,24 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
   const [description, setDescription] = useState(material.description)
   const [content, setContent] = useState(material.text ?? '')
 
-  const saveName = () => {
+  // 改名如果因為名稱重複被後端拒絕，material.filename 不會變，這裡要跟著回復顯示，
+  // 不能讓輸入框停在使用者剛剛打的（其實沒存成功的）名稱上。
+  useEffect(() => {
+    setNameBase(splitExtension(material.filename).base)
+  }, [material.filename])
+
+  const saveName = async () => {
     const trimmed = nameBase.trim()
     if (!trimmed) {
       setNameBase(initialBase)
       return
     }
-    setNameBase(trimmed)
     const fullName = `${trimmed}${ext}`
-    if (fullName !== material.filename) onUpdate(material.id, { filename: fullName })
+    if (fullName === material.filename) return
+    // 檔名可能因為跟其他素材撞名被拒絕，這時要把輸入框改回原本的名字，
+    // 不能讓畫面停在使用者剛打的、其實沒存成功的內容上。
+    const ok = await onUpdate(material.id, { filename: fullName })
+    if (!ok) setNameBase(initialBase)
   }
 
   const saveDescription = () => {

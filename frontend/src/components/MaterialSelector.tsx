@@ -12,7 +12,10 @@ interface MaterialSelectorProps {
   selectedIds: string[]
   busy: boolean
   onChange: (ids: string[]) => void
-  onUpdateMaterial: (id: string, updates: { filename?: string; description?: string; text?: string }) => void
+  onUpdateMaterial: (
+    id: string,
+    updates: { filename?: string; description?: string; text?: string },
+  ) => Promise<boolean>
   onAddFiles: (files: File[]) => void
   onAddText: (label: string, content: string) => void
 }

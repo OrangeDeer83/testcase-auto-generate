@@ -28,7 +28,10 @@ interface MaterialLibraryPanelProps {
   onUpload: (files: File[]) => void
   onAddText: (drafts: TextMaterialDraft[]) => void
   onRemoveMaterial: (id: string) => void
-  onUpdateMaterial: (id: string, updates: { filename?: string; description?: string; text?: string }) => void
+  onUpdateMaterial: (
+    id: string,
+    updates: { filename?: string; description?: string; text?: string },
+  ) => Promise<boolean>
 }
 
 export function MaterialLibraryPanel({

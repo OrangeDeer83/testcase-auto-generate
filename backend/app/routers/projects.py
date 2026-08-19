@@ -74,6 +74,7 @@ async def upload_materials(project_id: str, files: list[UploadFile] = File(...))
             material = parse_upload(file.filename or "unnamed", content)
         except UnsupportedFileTypeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        material.filename = project_store.make_unique_filename(project_id, material.filename)
         project_store.add_material(project_id, material)
         uploaded.append({"id": material.id, "filename": material.filename, "kind": material.kind})
 
@@ -95,6 +96,7 @@ def add_text_material(project_id: str, payload: TextMaterialPayload):
         raise HTTPException(status_code=400, detail="文字內容不可為空")
 
     label = payload.label.strip() or "文字輸入"
+    label = project_store.make_unique_filename(project_id, label)
     material = ParsedMaterial(filename=label, kind="text", text=content)
     project_store.add_material(project_id, material)
 
@@ -120,6 +122,8 @@ def update_material(project_id: str, material_id: str, payload: MaterialUpdatePa
         filename = payload.filename.strip()
         if not filename:
             raise HTTPException(status_code=400, detail="檔名不可為空")
+        if project_store.filename_exists(project_id, filename, exclude_material_id=material_id):
+            raise HTTPException(status_code=400, detail=f"已經有素材叫做「{filename}」，請換一個名稱")
 
     description = payload.description.strip() if payload.description is not None else None
 

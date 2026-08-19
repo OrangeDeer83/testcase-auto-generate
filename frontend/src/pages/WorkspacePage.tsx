@@ -122,13 +122,18 @@ export function WorkspacePage() {
   const handleUpdateMaterial = async (
     id: string,
     updates: { filename?: string; description?: string; text?: string },
-  ) => {
+  ): Promise<boolean> => {
     setError(null)
     try {
       await updateMaterial(projectId, id, updates)
-      setMaterials(await getMaterials(projectId))
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : '更新素材失敗')
+      return false
+    } finally {
+      // 就算更新失敗（例如檔名重複被拒絕），也要重新讀取最新狀態，
+      // 讓素材列表的輸入框回復成後端實際存的值，不要停在使用者打的內容上。
+      setMaterials(await getMaterials(projectId))
     }
   }
 
