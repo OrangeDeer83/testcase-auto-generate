@@ -10,11 +10,16 @@ const LIBRARY_COLLAPSE_THRESHOLD = 4
 
 interface TextField {
   id: number
+  label: string
   value: string
 }
 
 function nextFieldId(fields: TextField[]): number {
   return fields.reduce((max, f) => Math.max(max, f.id), 0) + 1
+}
+
+function defaultLabel(id: number): string {
+  return `欄位${id}`
 }
 
 export interface TextMaterialDraft {
@@ -43,7 +48,9 @@ export function MaterialLibraryPanel({
   onUpdateMaterial,
 }: MaterialLibraryPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [textFields, setTextFields] = useState<TextField[]>(() => [{ id: 1, value: '' }])
+  const [textFields, setTextFields] = useState<TextField[]>(() => [
+    { id: 1, label: defaultLabel(1), value: '' },
+  ])
   const [showContent, setShowContent] = useState(false)
   const [libraryExpanded, setLibraryExpanded] = useState(
     materials.length <= LIBRARY_COLLAPSE_THRESHOLD,
@@ -59,8 +66,15 @@ export function MaterialLibraryPanel({
     setTextFields((fields) => fields.map((f) => (f.id === id ? { ...f, value } : f)))
   }
 
+  const updateFieldLabel = (id: number, label: string) => {
+    setTextFields((fields) => fields.map((f) => (f.id === id ? { ...f, label } : f)))
+  }
+
   const addField = () => {
-    setTextFields((fields) => [...fields, { id: nextFieldId(fields), value: '' }])
+    setTextFields((fields) => {
+      const id = nextFieldId(fields)
+      return [...fields, { id, label: defaultLabel(id), value: '' }]
+    })
   }
 
   const removeField = (id: number) => {
@@ -78,8 +92,13 @@ export function MaterialLibraryPanel({
 
   const handleAddTextClick = () => {
     if (nonEmptyFields.length === 0) return
-    onAddText(nonEmptyFields.map((f) => ({ label: `欄位${f.id}`, content: f.value.trim() })))
-    setTextFields([{ id: 1, value: '' }])
+    onAddText(
+      nonEmptyFields.map((f) => ({
+        label: f.label.trim() || defaultLabel(f.id),
+        content: f.value.trim(),
+      })),
+    )
+    setTextFields([{ id: 1, label: defaultLabel(1), value: '' }])
   }
 
   return (
@@ -111,7 +130,14 @@ export function MaterialLibraryPanel({
 
       {textFields.map((field) => (
         <div key={field.id} className="text-field-row">
-          <label className="text-field-label">欄位{field.id}</label>
+          <input
+            type="text"
+            className="text-field-label-input"
+            value={field.label}
+            disabled={busy}
+            placeholder={defaultLabel(field.id)}
+            onChange={(e) => updateFieldLabel(field.id, e.target.value)}
+          />
           <div className="text-field-input-row">
             <textarea
               value={field.value}
