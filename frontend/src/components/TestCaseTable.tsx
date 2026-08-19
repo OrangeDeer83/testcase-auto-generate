@@ -1,5 +1,10 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { TestCase, TestStep } from '../types'
+
+interface DragInfo {
+  caseIndex: number
+  stepIndex: number
+}
 
 interface TestCaseTableProps {
   testCases: TestCase[]
@@ -69,6 +74,9 @@ export function TestCaseTable({
   const previousValueOf = (key: string) => previousValues?.get(key)
   const focusClears = (keys: string[]) => () => onFieldFocus?.(keys)
 
+  const [dragInfo, setDragInfo] = useState<DragInfo | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+
   const updateCase = (index: number, patch: Partial<TestCase>) => {
     const next = testCases.slice()
     next[index] = { ...next[index], ...patch }
@@ -86,6 +94,15 @@ export function TestCaseTable({
     const targetCase = testCases[caseIndex]
     const nextStepNo = targetCase.steps.length + 1
     updateCase(caseIndex, { steps: [...targetCase.steps, emptyStep(nextStepNo)] })
+  }
+
+  const reorderSteps = (caseIndex: number, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+    const targetCase = testCases[caseIndex]
+    const steps = targetCase.steps.slice()
+    const [moved] = steps.splice(fromIndex, 1)
+    steps.splice(toIndex, 0, moved)
+    updateCase(caseIndex, { steps: steps.map((step, idx) => ({ ...step, step_no: idx + 1 })) })
   }
 
   const removeStep = (caseIndex: number, stepIndex: number) => {
@@ -200,13 +217,55 @@ export function TestCaseTable({
                 const rowHighlighted = isHighlighted(stepKey)
                 const prevDescription = previousValueOf(`${stepKey}:description`)
                 const prevExpected = previousValueOf(`${stepKey}:expected_result`)
+                const isDragging =
+                  dragInfo?.caseIndex === caseIndex && dragInfo.stepIndex === stepIndex
+                const isDragOver =
+                  dragInfo?.caseIndex === caseIndex &&
+                  dragOverIndex === stepIndex &&
+                  dragInfo.stepIndex !== stepIndex
                 return (
                   <tr
                     id={`field-${stepKey}`}
                     key={stepIndex}
-                    className={rowHighlighted ? 'cell-highlight' : undefined}
+                    className={
+                      [
+                        rowHighlighted ? 'cell-highlight' : '',
+                        isDragging ? 'step-dragging' : '',
+                        isDragOver ? 'step-drag-over' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ') || undefined
+                    }
+                    onDragOver={(e) => {
+                      if (dragInfo?.caseIndex !== caseIndex) return
+                      e.preventDefault()
+                      if (dragOverIndex !== stepIndex) setDragOverIndex(stepIndex)
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      if (dragInfo?.caseIndex === caseIndex) {
+                        reorderSteps(caseIndex, dragInfo.stepIndex, stepIndex)
+                      }
+                      setDragInfo(null)
+                      setDragOverIndex(null)
+                    }}
                   >
-                    <td>{step.step_no}</td>
+                    <td
+                      className="step-number-cell"
+                      draggable={testCase.steps.length > 1}
+                      onDragStart={() => setDragInfo({ caseIndex, stepIndex })}
+                      onDragEnd={() => {
+                        setDragInfo(null)
+                        setDragOverIndex(null)
+                      }}
+                    >
+                      {testCase.steps.length > 1 && (
+                        <span className="step-drag-grip" aria-hidden="true">
+                          ⠿
+                        </span>
+                      )}
+                      {step.step_no}
+                    </td>
                     <td>
                       <AutoTextArea
                         id={`field-${stepKey}:description`}
