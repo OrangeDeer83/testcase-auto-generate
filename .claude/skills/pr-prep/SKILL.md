@@ -90,7 +90,11 @@ git status
 把產生好的標題/描述完整貼給使用者看。確認要送出之後：
 
 - **有 `gh` CLI 且已登入**（`gh auth status` 確認）：使用者同意後可以用 `gh pr create --title "<標題>" --body "<描述>"` 直接開，不用使用者手動貼內容。
-- **沒有 `gh` CLI，也沒有能操作的已登入瀏覽器**：不要嘗試自己硬闖 GitHub 網頁（不能替使用者輸入帳密登入）。改成：先確認 head 分支已經 push 到 remote（`git push -u origin <branch>`，一樣要先取得同意），然後把 `https://github.com/<owner>/<repo>/pull/new/<branch>` 這個連結，連同已經產生好的標題/描述一起貼給使用者，讓他自己開瀏覽器點連結、貼上內容、按下 Create pull request。
+- **沒有 `gh` CLI，也沒有能操作的已登入瀏覽器**：不要嘗試自己硬闖 GitHub 網頁（不能替使用者輸入帳密登入）。改成：先確認 head 分支已經 push 到 remote（`git push -u origin <branch>`，一樣要先取得同意），然後把連結連同已經產生好的標題/描述一起貼給使用者，讓他自己開瀏覽器點連結、按下 Create pull request。
+  - **優先給預先帶好標題/描述的連結**，不要讓使用者手動複製貼上：GitHub 的 compare 頁面支援用 query string 帶入表單內容，格式是 `https://github.com/<owner>/<repo>/compare/<base>...<head>?quick_pull=1&title=<url-encoded 標題>&body=<url-encoded 描述>`。標題跟描述都要正確 URL-encode（含中文、換行、`#`、`&` 等符號），不要手動拼字串湊編碼，用 Bash 起一段小 script（例如 Python 的 `urllib.parse.urlencode`）產生，避免編錯壞掉整條連結。
+  - 這條連結即使很長（幾千字元）通常也不是問題，但一定要提醒使用者：**這是預先帶好內容的連結，不是已經送出的 PR**，他自己點開、看過欄位內容、按下 Create pull request 才算數。
+  - 因為你自己的瀏覽器工具通常沒有登入使用者的 GitHub 帳號，點開這條連結大概率只能看到公開的 compare/diff 頁（看得到 commit 列表、改動檔案數，可以拿來核對範圍是否跟本地一致），看不到「Create pull request」表單本身，所以**不要宣稱已經幫使用者驗證過標題/描述真的有帶進表單**——誠實講清楚驗證到哪一步（連結有效、compare 範圍正確），哪一步只能請使用者自己確認（表單有沒有真的預填成功）。
+  - 保險起見，同時把純文字版的標題/描述也貼給使用者，讓他在預填連結萬一沒生效（例如瀏覽器擋掉過長 URL、或欄位沒帶到）時可以直接手動貼上，不用回頭再要一次。
 
 不管走哪條路，都不要在使用者還沒看過內容、沒有明確說「可以送出」之前就建立 PR。這跟建立分支、push 到 remote 之類會影響共享狀態的操作一樣，都需要先取得使用者的明確同意，而且「push 分支」跟「開 PR」是兩個各自需要同意的動作，即使使用者已經同意了其中一個，也不代表另一個自動獲得同意。
 
