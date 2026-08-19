@@ -118,8 +118,8 @@ export function TestCaseTable({
           className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}`}
           key={caseIndex}
         >
+          <span className="case-number">{caseIndex + 1}</span>
           <div className="case-card-header">
-            <span className="case-number">#{caseIndex + 1}</span>
             <input
               className="name-input"
               value={testCase.name}
