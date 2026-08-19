@@ -53,16 +53,52 @@ export function HomePage() {
   }
 
   return (
-    <div className="app-shell">
-      <div className="app-header">
-        <h1>測試用例自動產生</h1>
-        <p className="subtitle">選擇一個專案繼續，或建立新專案開始上傳需求文件與 UI 截圖。</p>
-      </div>
+    <div className="home-shell">
+      <div className="home-card">
+        <div className="home-brand">
+          <div className="home-brand-icon">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
+              <path d="M3 11l9-8 9 8" />
+              <path d="M5 10v10h14V10" />
+            </svg>
+          </div>
+          <span>測試用例自動產生</span>
+        </div>
 
-      {error && <div className="error-banner">{error}</div>}
+        {error && <div className="error-banner">{error}</div>}
 
-      <div className="panel">
-        <h2>建立新專案</h2>
+        <div>
+          <p className="home-section-title">選擇專案</p>
+          {projects.length === 0 && <p className="subtitle">還沒有任何專案，在下面建立第一個。</p>}
+          <div className="home-project-list">
+            {projects.map((project) => (
+              <div key={project.id} className="home-project-item" onClick={() => navigate(`/projects/${project.id}`)}>
+                <div className="home-project-avatar">{project.name.slice(0, 1)}</div>
+                <div className="home-project-info">
+                  <p className="home-project-name">{project.name}</p>
+                  <p className="home-project-meta">
+                    素材 {project.materialCount} 項・對話 {project.conversationCount} 個・最後更新{' '}
+                    {formatTime(project.updatedAt)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="secondary material-remove"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDelete(project.id, project.name)
+                  }}
+                >
+                  刪除
+                </button>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8896a5" strokeWidth="2">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="text-field-input-row">
           <input
             type="text"
@@ -75,40 +111,12 @@ export function HomePage() {
             }}
           />
           <button disabled={busy || !newName.trim()} onClick={handleCreate}>
-            建立
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            建立專案
           </button>
         </div>
-      </div>
-
-      <div className="panel">
-        <h2>專案列表</h2>
-        {projects.length === 0 && <p className="subtitle">還沒有任何專案。</p>}
-        {projects.length > 0 && (
-          <ul className="material-list">
-            {projects.map((project) => (
-              <li key={project.id} className="material-item">
-                <div className="material-item-row">
-                  <span
-                    className="project-name-link"
-                    onClick={() => navigate(`/projects/${project.id}`)}
-                  >
-                    {project.name}
-                  </span>
-                  <button
-                    className="secondary material-remove"
-                    onClick={() => handleDelete(project.id, project.name)}
-                  >
-                    刪除
-                  </button>
-                </div>
-                <p className="previous-value">
-                  素材 {project.materialCount} 項・對話 {project.conversationCount} 個・最後更新
-                  {' '}{formatTime(project.updatedAt)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
     </div>
   )
