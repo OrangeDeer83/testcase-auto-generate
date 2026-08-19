@@ -6,14 +6,20 @@ import { MaterialRow } from './MaterialRow'
 import { MaterialsModal } from './MaterialsModal'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
+const LIBRARY_COLLAPSE_THRESHOLD = 4
 
 interface TextField {
   id: number
+  label: string
   value: string
 }
 
 function nextFieldId(fields: TextField[]): number {
   return fields.reduce((max, f) => Math.max(max, f.id), 0) + 1
+}
+
+function defaultLabel(id: number): string {
+  return `欄位${id}`
 }
 
 export interface TextMaterialDraft {
@@ -27,7 +33,10 @@ interface MaterialLibraryPanelProps {
   onUpload: (files: File[]) => void
   onAddText: (drafts: TextMaterialDraft[]) => void
   onRemoveMaterial: (id: string) => void
-  onUpdateMaterial: (id: string, updates: { filename?: string; description?: string; text?: string }) => void
+  onUpdateMaterial: (
+    id: string,
+    updates: { filename?: string; description?: string; text?: string },
+  ) => Promise<boolean>
 }
 
 export function MaterialLibraryPanel({
@@ -39,8 +48,13 @@ export function MaterialLibraryPanel({
   onUpdateMaterial,
 }: MaterialLibraryPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [textFields, setTextFields] = useState<TextField[]>(() => [{ id: 1, value: '' }])
+  const [textFields, setTextFields] = useState<TextField[]>(() => [
+    { id: 1, label: defaultLabel(1), value: '' },
+  ])
   const [showContent, setShowContent] = useState(false)
+  const [libraryExpanded, setLibraryExpanded] = useState(
+    materials.length <= LIBRARY_COLLAPSE_THRESHOLD,
+  )
 
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
@@ -52,8 +66,15 @@ export function MaterialLibraryPanel({
     setTextFields((fields) => fields.map((f) => (f.id === id ? { ...f, value } : f)))
   }
 
+  const updateFieldLabel = (id: number, label: string) => {
+    setTextFields((fields) => fields.map((f) => (f.id === id ? { ...f, label } : f)))
+  }
+
   const addField = () => {
-    setTextFields((fields) => [...fields, { id: nextFieldId(fields), value: '' }])
+    setTextFields((fields) => {
+      const id = nextFieldId(fields)
+      return [...fields, { id, label: defaultLabel(id), value: '' }]
+    })
   }
 
   const removeField = (id: number) => {
@@ -71,8 +92,13 @@ export function MaterialLibraryPanel({
 
   const handleAddTextClick = () => {
     if (nonEmptyFields.length === 0) return
-    onAddText(nonEmptyFields.map((f) => ({ label: `欄位${f.id}`, content: f.value.trim() })))
-    setTextFields([{ id: 1, value: '' }])
+    onAddText(
+      nonEmptyFields.map((f) => ({
+        label: f.label.trim() || defaultLabel(f.id),
+        content: f.value.trim(),
+      })),
+    )
+    setTextFields([{ id: 1, label: defaultLabel(1), value: '' }])
   }
 
   return (
@@ -104,7 +130,14 @@ export function MaterialLibraryPanel({
 
       {textFields.map((field) => (
         <div key={field.id} className="text-field-row">
-          <label className="text-field-label">欄位{field.id}</label>
+          <input
+            type="text"
+            className="text-field-label-input"
+            value={field.label}
+            disabled={busy}
+            placeholder={defaultLabel(field.id)}
+            onChange={(e) => updateFieldLabel(field.id, e.target.value)}
+          />
           <div className="text-field-input-row">
             <textarea
               value={field.value}
@@ -136,17 +169,29 @@ export function MaterialLibraryPanel({
       </div>
 
       {materials.length > 0 && (
-        <ul className="material-list">
-          {materials.map((material) => (
-            <MaterialRow
-              key={material.id}
-              material={material}
-              busy={busy}
-              onRemove={onRemoveMaterial}
-              onUpdate={onUpdateMaterial}
-            />
-          ))}
-        </ul>
+        <div className="material-library-collapsible">
+          <button
+            type="button"
+            className="material-library-toggle"
+            onClick={() => setLibraryExpanded((prev) => !prev)}
+          >
+            <span className={`toggle-caret${libraryExpanded ? ' expanded' : ''}`}>▸</span>
+            素材清單（共 {materials.length} 項，點擊可編輯說明／檔名）
+          </button>
+          {libraryExpanded && (
+            <ul className="material-list">
+              {materials.map((material) => (
+                <MaterialRow
+                  key={material.id}
+                  material={material}
+                  busy={busy}
+                  onRemove={onRemoveMaterial}
+                  onUpdate={onUpdateMaterial}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {showContent && (

@@ -8,9 +8,11 @@ import {
   getMaterials,
   getProject,
   listConversations,
+  updateConversation,
   updateMaterial,
   uploadMaterials,
 } from '../api'
+import { ConversationRow } from '../components/ConversationRow'
 import { MaterialLibraryPanel, type TextMaterialDraft } from '../components/MaterialLibraryPanel'
 import type { ConversationSummary, Project, UploadedMaterial } from '../types'
 
@@ -24,6 +26,7 @@ export function ProjectPage() {
   const [project, setProject] = useState<Project | null>(null)
   const [materials, setMaterials] = useState<UploadedMaterial[]>([])
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [newConversationName, setNewConversationName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -91,23 +94,40 @@ export function ProjectPage() {
   const handleUpdateMaterial = async (
     id: string,
     updates: { filename?: string; description?: string; text?: string },
-  ) => {
+  ): Promise<boolean> => {
     setError(null)
     try {
       await updateMaterial(projectId, id, updates)
-      await refreshAll()
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : '更新素材失敗')
+      return false
+    } finally {
+      // 就算更新失敗（例如檔名重複被拒絕），也要重新讀取最新狀態，
+      // 讓素材列表的輸入框回復成後端實際存的值，不要停在使用者打的內容上。
+      await refreshAll()
     }
   }
 
   const handleCreateConversation = async () => {
     setError(null)
     try {
-      const conversation = await createConversation(projectId, '新對話')
+      const name = newConversationName.trim() || `新對話 ${conversations.length + 1}`
+      const conversation = await createConversation(projectId, name)
+      setNewConversationName('')
       navigate(`/projects/${projectId}/conversations/${conversation.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '建立對話失敗')
+    }
+  }
+
+  const handleRenameConversation = async (id: string, name: string) => {
+    setError(null)
+    try {
+      await updateConversation(projectId, id, { name })
+      await refreshAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '重新命名對話失敗')
     }
   }
 
@@ -123,7 +143,7 @@ export function ProjectPage() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell app-shell-project">
       <div className="app-header">
         <div className="app-header-row">
           <h1>{project?.name ?? '專案'}</h1>
@@ -135,51 +155,50 @@ export function ProjectPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <MaterialLibraryPanel
-        materials={materials}
-        busy={busy}
-        onUpload={handleUpload}
-        onAddText={handleAddText}
-        onRemoveMaterial={handleRemoveMaterial}
-        onUpdateMaterial={handleUpdateMaterial}
-      />
-
-      <div className="panel">
-        <div className="toolbar">
+      <div className="project-columns">
+        <div className="panel">
           <h2>對話</h2>
-          <button onClick={handleCreateConversation}>+ 開新對話</button>
+          <div className="text-field-input-row">
+            <input
+              type="text"
+              value={newConversationName}
+              placeholder="對話名稱，例如：登入頁驗證碼流程（留空則自動命名）"
+              onChange={(e) => setNewConversationName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateConversation()
+              }}
+            />
+            <button onClick={handleCreateConversation}>+ 開新對話</button>
+          </div>
+          {conversations.length === 0 && (
+            <p className="subtitle" style={{ marginTop: 12 }}>
+              還沒有對話，輸入名稱後點「開新對話」開始產生測試用例。
+            </p>
+          )}
+          {conversations.length > 0 && (
+            <ul className="material-list" style={{ marginTop: 12 }}>
+              {conversations.map((conversation) => (
+                <ConversationRow
+                  key={conversation.id}
+                  conversation={conversation}
+                  formatTime={formatTime}
+                  onNavigate={(id) => navigate(`/projects/${projectId}/conversations/${id}`)}
+                  onRename={handleRenameConversation}
+                  onDelete={handleDeleteConversation}
+                />
+              ))}
+            </ul>
+          )}
         </div>
-        {conversations.length === 0 && (
-          <p className="subtitle">還沒有對話，點「開新對話」開始產生測試用例。</p>
-        )}
-        {conversations.length > 0 && (
-          <ul className="material-list">
-            {conversations.map((conversation) => (
-              <li key={conversation.id} className="material-item">
-                <div className="material-item-row">
-                  <span
-                    className="project-name-link"
-                    onClick={() =>
-                      navigate(`/projects/${projectId}/conversations/${conversation.id}`)
-                    }
-                  >
-                    {conversation.name}
-                  </span>
-                  <button
-                    className="secondary material-remove"
-                    onClick={() => handleDeleteConversation(conversation.id, conversation.name)}
-                  >
-                    刪除
-                  </button>
-                </div>
-                <p className="previous-value">
-                  {conversation.testCaseCount} 筆測試用例・{conversation.messageCount} 則訊息・
-                  最後更新 {formatTime(conversation.updatedAt)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
+
+        <MaterialLibraryPanel
+          materials={materials}
+          busy={busy}
+          onUpload={handleUpload}
+          onAddText={handleAddText}
+          onRemoveMaterial={handleRemoveMaterial}
+          onUpdateMaterial={handleUpdateMaterial}
+        />
       </div>
     </div>
   )

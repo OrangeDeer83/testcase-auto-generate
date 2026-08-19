@@ -5,13 +5,17 @@ import type { UploadedMaterial } from '../types'
 import { MaterialRow } from './MaterialRow'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
+const LIBRARY_COLLAPSE_THRESHOLD = 4
 
 interface MaterialSelectorProps {
   materials: UploadedMaterial[]
   selectedIds: string[]
   busy: boolean
   onChange: (ids: string[]) => void
-  onUpdateMaterial: (id: string, updates: { filename?: string; description?: string; text?: string }) => void
+  onUpdateMaterial: (
+    id: string,
+    updates: { filename?: string; description?: string; text?: string },
+  ) => Promise<boolean>
   onAddFiles: (files: File[]) => void
   onAddText: (label: string, content: string) => void
 }
@@ -28,6 +32,9 @@ export function MaterialSelector({
   const selectedSet = new Set(selectedIds)
   const inputRef = useRef<HTMLInputElement>(null)
   const [newText, setNewText] = useState('')
+  const [libraryExpanded, setLibraryExpanded] = useState(
+    materials.length <= LIBRARY_COLLAPSE_THRESHOLD,
+  )
 
   const toggle = (id: string) => {
     if (selectedSet.has(id)) {
@@ -59,29 +66,9 @@ export function MaterialSelector({
 
   return (
     <div>
-      {materials.length > 0 && (
-        <ul className="material-list">
-          {materials.map((material) => (
-            <MaterialRow
-              key={material.id}
-              material={material}
-              busy={busy}
-              onUpdate={onUpdateMaterial}
-              leadingControl={
-                <input
-                  type="checkbox"
-                  checked={selectedSet.has(material.id)}
-                  disabled={busy}
-                  onChange={() => toggle(material.id)}
-                />
-              }
-            />
-          ))}
-        </ul>
-      )}
-
-      <p className="subtitle" style={{ marginTop: 12 }}>
-        也可以直接在這裡加入新素材（會加進整個專案的素材庫，並自動勾選給這個對話用）：
+      <p className="text-field-label">新增這次對話要用的素材</p>
+      <p className="subtitle" style={{ marginTop: 0 }}>
+        會加進整個專案的素材庫，並自動勾選給這個對話用：
       </p>
       <input
         ref={inputRef}
@@ -103,6 +90,39 @@ export function MaterialSelector({
           加入
         </button>
       </div>
+
+      {materials.length > 0 && (
+        <div className="material-library-collapsible">
+          <button
+            type="button"
+            className="material-library-toggle"
+            onClick={() => setLibraryExpanded((prev) => !prev)}
+          >
+            <span className={`toggle-caret${libraryExpanded ? ' expanded' : ''}`}>▸</span>
+            專案素材庫（共 {materials.length} 項，已勾選 {selectedIds.length} 項）
+          </button>
+          {libraryExpanded && (
+            <ul className="material-list">
+              {materials.map((material) => (
+                <MaterialRow
+                  key={material.id}
+                  material={material}
+                  busy={busy}
+                  onUpdate={onUpdateMaterial}
+                  leadingControl={
+                    <input
+                      type="checkbox"
+                      checked={selectedSet.has(material.id)}
+                      disabled={busy}
+                      onChange={() => toggle(material.id)}
+                    />
+                  }
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -115,3 +115,59 @@ def test_delete_material_removes_from_project_material_ids() -> None:
 def test_delete_material_returns_false_when_material_not_in_project() -> None:
     project = project_store.create_project("專案")
     assert project_store.delete_material(project.id, "does-not-exist") is False
+
+
+def test_make_unique_filename_returns_original_when_no_conflict() -> None:
+    project = project_store.create_project("專案")
+    assert project_store.make_unique_filename(project.id, "a.txt") == "a.txt"
+
+
+def test_make_unique_filename_appends_numeric_suffix_on_conflict() -> None:
+    project = project_store.create_project("專案")
+    project_store.add_material(project.id, ParsedMaterial(filename="a.txt", kind="text", text="x"))
+
+    assert project_store.make_unique_filename(project.id, "a.txt") == "a (2).txt"
+
+
+def test_make_unique_filename_skips_taken_suffixes_until_free() -> None:
+    project = project_store.create_project("專案")
+    project_store.add_material(project.id, ParsedMaterial(filename="a.txt", kind="text", text="x"))
+    project_store.add_material(project.id, ParsedMaterial(filename="a (2).txt", kind="text", text="x"))
+
+    assert project_store.make_unique_filename(project.id, "a.txt") == "a (3).txt"
+
+
+def test_make_unique_filename_is_case_insensitive() -> None:
+    project = project_store.create_project("專案")
+    project_store.add_material(project.id, ParsedMaterial(filename="A.txt", kind="text", text="x"))
+
+    assert project_store.make_unique_filename(project.id, "a.txt") == "a (2).txt"
+
+
+def test_make_unique_filename_excludes_given_material_id() -> None:
+    project = project_store.create_project("專案")
+    material = project_store.add_material(
+        project.id, ParsedMaterial(filename="a.txt", kind="text", text="x")
+    )
+    assert material is not None
+
+    # 排除自己之後，跟自己同名不算衝突，改名時用來允許「改成跟原本一樣的名字」。
+    assert (
+        project_store.make_unique_filename(project.id, "a.txt", exclude_material_id=material.id)
+        == "a.txt"
+    )
+
+
+def test_filename_exists_checks_case_insensitively_and_excludes_given_id() -> None:
+    project = project_store.create_project("專案")
+    material = project_store.add_material(
+        project.id, ParsedMaterial(filename="a.txt", kind="text", text="x")
+    )
+    assert material is not None
+
+    assert project_store.filename_exists(project.id, "A.TXT") is True
+    assert (
+        project_store.filename_exists(project.id, "A.TXT", exclude_material_id=material.id)
+        is False
+    )
+    assert project_store.filename_exists(project.id, "b.txt") is False

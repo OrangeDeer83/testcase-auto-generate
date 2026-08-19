@@ -108,7 +108,9 @@ export function TestCaseTable({
   return (
     <div className="panel">
       <h2>3. 確認與編輯測試用例</h2>
-      <p className="subtitle">請檢查 LLM 產出的內容，如有需要可直接修改後再匯出。</p>
+      <p className="subtitle">
+        請檢查 LLM 產出的內容，如有需要可直接修改後再匯出。共 {testCases.length} 筆用例。
+      </p>
 
       {testCases.map((testCase, caseIndex) => (
         <div
@@ -116,6 +118,7 @@ export function TestCaseTable({
           className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}`}
           key={caseIndex}
         >
+          <span className="case-number">{caseIndex + 1}</span>
           <div className="case-card-header">
             <input
               className="name-input"

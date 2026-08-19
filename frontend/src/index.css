@@ -51,6 +51,25 @@ body {
   margin-bottom: 0;
 }
 
+.app-shell.app-shell-project {
+  max-width: 1400px;
+}
+
+/* 對話跟素材庫左右並排，避免其中一個內容一多，就把另一個（還有畫面最上方的
+   錯誤訊息）往下推到看不到的地方。 */
+.project-columns {
+  display: grid;
+  grid-template-columns: minmax(320px, 38%) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .project-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* workspace 階段整個版面固定在視窗高度內，只有右側用例表格自己捲動，
    對話欄的位置完全不受表格內容多寡影響，不會有捲到底時跟著挪動的情況。 */
 .workspace-layout {
@@ -168,6 +187,26 @@ h1 {
   letter-spacing: 0.04em;
 }
 
+.text-field-label-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #5b6b7d;
+  background: transparent;
+}
+
+.text-field-label-input:focus {
+  outline: none;
+  border-color: #14304d;
+  background: #fff;
+}
+
 .text-field-input-row {
   display: flex;
   gap: 8px;
@@ -218,6 +257,21 @@ h1 {
 
 .material-icon {
   flex-shrink: 0;
+}
+
+.material-thumbnail {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid #d7dee6;
+  cursor: pointer;
+}
+
+.material-thumbnail-preview img {
+  max-width: 100%;
+  border-radius: 3px;
 }
 
 .material-name-input {
@@ -554,9 +608,11 @@ tr.cell-highlight td {
 }
 
 .case-card {
+  position: relative;
   border: 1px solid #d7dee6;
   border-radius: 4px;
   padding: 12px 16px;
+  margin-top: 12px;
   margin-bottom: 14px;
   transition: background-color 1.2s ease, box-shadow 1.2s ease;
 }
@@ -578,6 +634,23 @@ tr.cell-highlight td {
   font-weight: 700;
   font-size: 0.92rem;
   color: #14304d;
+}
+
+.case-number {
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #14304d;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.76rem;
+  box-shadow: 0 1px 3px rgba(20, 48, 77, 0.35);
 }
 
 .field-row {
@@ -642,6 +715,43 @@ tr.cell-highlight td {
   gap: 8px;
   font-size: 0.88rem;
   cursor: pointer;
+}
+
+.material-library-collapsible {
+  margin-top: 18px;
+}
+
+.material-library-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  background: #f4f6f8;
+  border: 1px solid #d7dee6;
+  border-radius: 3px;
+  padding: 8px 12px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #14304d;
+  cursor: pointer;
+}
+
+.material-library-toggle:hover {
+  background: #eaeef2;
+}
+
+.toggle-caret {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.toggle-caret.expanded {
+  transform: rotate(90deg);
+}
+
+.material-library-collapsible .material-list {
+  margin-bottom: 0;
 }
 
 .modal-overlay {
