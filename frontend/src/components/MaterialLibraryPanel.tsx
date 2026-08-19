@@ -6,6 +6,7 @@ import { MaterialRow } from './MaterialRow'
 import { MaterialsModal } from './MaterialsModal'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
+const LIBRARY_COLLAPSE_THRESHOLD = 4
 
 interface TextField {
   id: number
@@ -41,6 +42,9 @@ export function MaterialLibraryPanel({
   const inputRef = useRef<HTMLInputElement>(null)
   const [textFields, setTextFields] = useState<TextField[]>(() => [{ id: 1, value: '' }])
   const [showContent, setShowContent] = useState(false)
+  const [libraryExpanded, setLibraryExpanded] = useState(
+    materials.length <= LIBRARY_COLLAPSE_THRESHOLD,
+  )
 
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
@@ -136,17 +140,29 @@ export function MaterialLibraryPanel({
       </div>
 
       {materials.length > 0 && (
-        <ul className="material-list">
-          {materials.map((material) => (
-            <MaterialRow
-              key={material.id}
-              material={material}
-              busy={busy}
-              onRemove={onRemoveMaterial}
-              onUpdate={onUpdateMaterial}
-            />
-          ))}
-        </ul>
+        <div className="material-library-collapsible">
+          <button
+            type="button"
+            className="material-library-toggle"
+            onClick={() => setLibraryExpanded((prev) => !prev)}
+          >
+            <span className={`toggle-caret${libraryExpanded ? ' expanded' : ''}`}>▸</span>
+            素材清單（共 {materials.length} 項，點擊可編輯說明／檔名）
+          </button>
+          {libraryExpanded && (
+            <ul className="material-list">
+              {materials.map((material) => (
+                <MaterialRow
+                  key={material.id}
+                  material={material}
+                  busy={busy}
+                  onRemove={onRemoveMaterial}
+                  onUpdate={onUpdateMaterial}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {showContent && (
