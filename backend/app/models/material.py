@@ -1,3 +1,4 @@
+import time
 import uuid
 from typing import Literal, Optional
 
@@ -11,3 +12,4 @@ class ParsedMaterial(BaseModel):
     text: Optional[str] = None
     image_data_url: Optional[str] = None
     description: str = ""
+    created_at: float = Field(default_factory=time.time)

@@ -2,15 +2,16 @@ import type { UploadedMaterial } from '../types'
 
 interface MaterialsModalProps {
   materials: UploadedMaterial[]
+  title?: string
   onClose: () => void
 }
 
-export function MaterialsModal({ materials, onClose }: MaterialsModalProps) {
+export function MaterialsModal({ materials, title = '素材內容', onClose }: MaterialsModalProps) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>一開始提供的素材（共 {materials.length} 項）</h2>
+          <h2>{title}（共 {materials.length} 項）</h2>
           <button className="secondary" onClick={onClose}>
             關閉
           </button>

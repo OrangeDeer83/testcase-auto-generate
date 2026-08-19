@@ -25,9 +25,11 @@ export interface GenerationResult {
 }
 
 export interface ChatMessage {
+  id: string
   role: 'user' | 'assistant'
   content: string
   context?: string
+  materialId?: string
   imageUrl?: string
   questions?: ClarificationQuestion[]
 }
@@ -39,4 +41,41 @@ export interface UploadedMaterial {
   text?: string
   image_data_url?: string
   description: string
+}
+
+export interface Project {
+  id: string
+  name: string
+  materialIds: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ProjectSummary {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+  materialCount: number
+  conversationCount: number
+}
+
+export interface Conversation {
+  id: string
+  projectId: string
+  name: string
+  selectedMaterialIds: string[]
+  chatLog: ChatMessage[]
+  lastResult: GenerationResult | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ConversationSummary {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+  messageCount: number
+  testCaseCount: number
 }

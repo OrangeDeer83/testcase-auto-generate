@@ -1,38 +1,24 @@
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import Response
 
+from app.services import conversation_store, project_store
 from app.services.excel_export import to_excel
-from app.services.markdown_export import to_markdown
-from app.services.session_store import get_session
 
-router = APIRouter(prefix="/api", tags=["export"])
+router = APIRouter(prefix="/api/projects/{project_id}/conversations/{conversation_id}", tags=["export"])
 
 
-@router.get("/sessions/{session_id}/export")
-def export_markdown(session_id: str):
-    session = get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session 不存在或已過期")
-    if not session.last_result or not session.last_result.test_cases:
+@router.get("/export/excel")
+def export_excel(project_id: str, conversation_id: str):
+    if not project_store.get_project(project_id):
+        raise HTTPException(status_code=404, detail="專案不存在或已被刪除")
+
+    conversation = conversation_store.get_conversation(project_id, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="對話不存在或已被刪除")
+    if not conversation.last_result or not conversation.last_result.test_cases:
         raise HTTPException(status_code=400, detail="尚無可匯出的測試用例")
 
-    markdown = to_markdown(session.last_result.test_cases)
-    return PlainTextResponse(
-        content=markdown,
-        media_type="text/markdown",
-        headers={"Content-Disposition": "attachment; filename=testcases.md"},
-    )
-
-
-@router.get("/sessions/{session_id}/export/excel")
-def export_excel(session_id: str):
-    session = get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session 不存在或已過期")
-    if not session.last_result or not session.last_result.test_cases:
-        raise HTTPException(status_code=400, detail="尚無可匯出的測試用例")
-
-    content = to_excel(session.last_result.test_cases)
+    content = to_excel(conversation.last_result.test_cases)
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

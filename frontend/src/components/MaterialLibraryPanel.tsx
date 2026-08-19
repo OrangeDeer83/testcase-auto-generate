@@ -3,6 +3,7 @@ import type { ClipboardEvent } from 'react'
 import { getPastedImageFile } from '../clipboardImage'
 import type { UploadedMaterial } from '../types'
 import { MaterialRow } from './MaterialRow'
+import { MaterialsModal } from './MaterialsModal'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
 
@@ -20,25 +21,26 @@ export interface TextMaterialDraft {
   content: string
 }
 
-interface UploadPanelProps {
+interface MaterialLibraryPanelProps {
   materials: UploadedMaterial[]
   busy: boolean
   onUpload: (files: File[]) => void
+  onAddText: (drafts: TextMaterialDraft[]) => void
   onRemoveMaterial: (id: string) => void
-  onUpdateMaterial: (id: string, updates: { filename?: string; description?: string }) => void
-  onGenerate: (textMaterials: TextMaterialDraft[]) => void
+  onUpdateMaterial: (id: string, updates: { filename?: string; description?: string; text?: string }) => void
 }
 
-export function UploadPanel({
+export function MaterialLibraryPanel({
   materials,
   busy,
   onUpload,
+  onAddText,
   onRemoveMaterial,
   onUpdateMaterial,
-  onGenerate,
-}: UploadPanelProps) {
+}: MaterialLibraryPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [textFields, setTextFields] = useState<TextField[]>(() => [{ id: 1, value: '' }])
+  const [showContent, setShowContent] = useState(false)
 
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
@@ -66,17 +68,25 @@ export function UploadPanel({
   }
 
   const nonEmptyFields = textFields.filter((f) => f.value.trim())
-  const readyCount = materials.length + nonEmptyFields.length
 
-  const handleGenerateClick = () => {
-    onGenerate(nonEmptyFields.map((f) => ({ label: `欄位${f.id}`, content: f.value.trim() })))
+  const handleAddTextClick = () => {
+    if (nonEmptyFields.length === 0) return
+    onAddText(nonEmptyFields.map((f) => ({ label: `欄位${f.id}`, content: f.value.trim() })))
+    setTextFields([{ id: 1, value: '' }])
   }
 
   return (
     <div className="panel">
-      <h2>1. 上傳素材</h2>
+      <div className="app-header-row">
+        <h2>素材庫</h2>
+        {materials.length > 0 && (
+          <button className="secondary" onClick={() => setShowContent(true)}>
+            📎 檢視素材內容
+          </button>
+        )}
+      </div>
       <p className="subtitle">
-        支援需求規格文件（PDF / Word .docx / Excel .xlsx / Markdown / 純文字）與 UI 截圖（PNG / JPG），可一次上傳多個檔案。
+        這個專案的所有對話共用同一個素材庫，上傳一次即可重複使用，不用每個對話都重新上傳。支援需求規格文件（PDF / Word .docx / Excel .xlsx / Markdown / 純文字）與 UI 截圖（PNG / JPG）。
       </p>
 
       <input
@@ -89,7 +99,7 @@ export function UploadPanel({
       />
 
       <p className="subtitle" style={{ marginTop: 16 }}>
-        或直接貼上文字，可分成多個欄位，也可以一次貼很多內容到單一欄位——有內容的欄位會在產生用例時自動當作素材，空的欄位會被忽略：
+        或直接貼上文字，可分成多個欄位，也可以一次貼很多內容到單一欄位：
       </p>
 
       {textFields.map((field) => (
@@ -116,9 +126,14 @@ export function UploadPanel({
         </div>
       ))}
 
-      <button className="secondary" disabled={busy} onClick={addField}>
-        + 新增欄位
-      </button>
+      <div className="toolbar">
+        <button className="secondary" disabled={busy} onClick={addField}>
+          + 新增欄位
+        </button>
+        <button disabled={busy || nonEmptyFields.length === 0} onClick={handleAddTextClick}>
+          加入素材庫
+        </button>
+      </div>
 
       {materials.length > 0 && (
         <ul className="material-list">
@@ -134,12 +149,13 @@ export function UploadPanel({
         </ul>
       )}
 
-      <div className="toolbar">
-        <span className="subtitle">已備妥 {readyCount} 項素材</span>
-        <button disabled={busy || readyCount === 0} onClick={handleGenerateClick}>
-          {busy ? '產生中…' : '開始產生測試用例'}
-        </button>
-      </div>
+      {showContent && (
+        <MaterialsModal
+          materials={materials}
+          title="專案素材庫"
+          onClose={() => setShowContent(false)}
+        />
+      )}
     </div>
   )
 }

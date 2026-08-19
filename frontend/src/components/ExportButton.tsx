@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { exportExcel, exportMarkdown, updateTestCases } from '../api'
+import { exportExcel, updateTestCases } from '../api'
 import type { GenerationResult } from '../types'
 
 interface ExportButtonProps {
-  sessionId: string
+  projectId: string
+  conversationId: string
   result: GenerationResult
   onError: (message: string) => void
 }
@@ -19,36 +20,28 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function ExportButton({ sessionId, result, onError }: ExportButtonProps) {
-  const [busy, setBusy] = useState<'markdown' | 'excel' | null>(null)
+export function ExportButton({ projectId, conversationId, result, onError }: ExportButtonProps) {
+  const [busy, setBusy] = useState(false)
 
-  const handleExport = async (format: 'markdown' | 'excel') => {
-    setBusy(format)
+  const handleExport = async () => {
+    setBusy(true)
     try {
-      await updateTestCases(sessionId, result)
-      if (format === 'markdown') {
-        const blob = await exportMarkdown(sessionId)
-        downloadBlob(blob, 'testcases.md')
-      } else {
-        const blob = await exportExcel(sessionId)
-        downloadBlob(blob, 'testcases.xlsx')
-      }
+      await updateTestCases(projectId, conversationId, result)
+      const blob = await exportExcel(projectId, conversationId)
+      downloadBlob(blob, 'testcases.xlsx')
     } catch (err) {
       onError(err instanceof Error ? err.message : '匯出失敗')
     } finally {
-      setBusy(null)
+      setBusy(false)
     }
   }
 
-  const disabled = busy !== null || result.test_cases.length === 0
+  const disabled = busy || result.test_cases.length === 0
 
   return (
     <div className="export-buttons">
-      <button disabled={disabled} onClick={() => handleExport('markdown')}>
-        {busy === 'markdown' ? '匯出中…' : '匯出成 Markdown'}
-      </button>
-      <button disabled={disabled} onClick={() => handleExport('excel')}>
-        {busy === 'excel' ? '匯出中…' : '匯出成 Excel'}
+      <button disabled={disabled} onClick={handleExport}>
+        {busy ? '匯出中…' : '匯出成 Excel'}
       </button>
     </div>
   )
