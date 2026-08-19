@@ -10,6 +10,8 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BACKEND_DIR / "data"
 PROJECTS_DIR = DATA_DIR / "projects"
 
+T = TypeVar("T", bound=BaseModel)
+
 # RLock（可重入鎖）：project_store 刪素材時會在持有鎖的情況下呼叫
 # conversation_store 清理懸空參照，兩邊都會嘗試取鎖，一般 Lock 會死鎖。
 _lock = RLock()
