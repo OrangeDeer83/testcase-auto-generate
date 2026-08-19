@@ -85,7 +85,15 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
           <button
             className="secondary material-remove"
             disabled={busy}
-            onClick={() => onRemove(material.id)}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `確定要刪除素材「${material.filename}」嗎？如果已經在某些對話裡用過，那些對話紀錄裡的圖片／內容會變成找不到，且無法復原。`,
+                )
+              ) {
+                onRemove(material.id)
+              }
+            }}
           >
             刪除
           </button>
