@@ -55,7 +55,7 @@ export function ConversationRow({
           </span>
         )}
         {!editing && (
-          <button className="secondary" onClick={startEditing}>
+          <button className="secondary material-remove" onClick={startEditing}>
             重新命名
           </button>
         )}
