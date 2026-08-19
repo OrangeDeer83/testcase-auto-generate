@@ -51,6 +51,25 @@ body {
   margin-bottom: 0;
 }
 
+.app-shell.app-shell-project {
+  max-width: 1400px;
+}
+
+/* 對話跟素材庫左右並排，避免其中一個內容一多，就把另一個（還有畫面最上方的
+   錯誤訊息）往下推到看不到的地方。 */
+.project-columns {
+  display: grid;
+  grid-template-columns: minmax(320px, 38%) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .project-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* workspace 階段整個版面固定在視窗高度內，只有右側用例表格自己捲動，
    對話欄的位置完全不受表格內容多寡影響，不會有捲到底時跟著挪動的情況。 */
 .workspace-layout {

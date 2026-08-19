@@ -143,7 +143,7 @@ export function ProjectPage() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell app-shell-project">
       <div className="app-header">
         <div className="app-header-row">
           <h1>{project?.name ?? '專案'}</h1>
@@ -155,49 +155,51 @@ export function ProjectPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <div className="panel">
-        <h2>對話</h2>
-        <div className="text-field-input-row">
-          <input
-            type="text"
-            value={newConversationName}
-            placeholder="對話名稱，例如：登入頁驗證碼流程（留空則自動命名）"
-            onChange={(e) => setNewConversationName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCreateConversation()
-            }}
-          />
-          <button onClick={handleCreateConversation}>+ 開新對話</button>
+      <div className="project-columns">
+        <div className="panel">
+          <h2>對話</h2>
+          <div className="text-field-input-row">
+            <input
+              type="text"
+              value={newConversationName}
+              placeholder="對話名稱，例如：登入頁驗證碼流程（留空則自動命名）"
+              onChange={(e) => setNewConversationName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateConversation()
+              }}
+            />
+            <button onClick={handleCreateConversation}>+ 開新對話</button>
+          </div>
+          {conversations.length === 0 && (
+            <p className="subtitle" style={{ marginTop: 12 }}>
+              還沒有對話，輸入名稱後點「開新對話」開始產生測試用例。
+            </p>
+          )}
+          {conversations.length > 0 && (
+            <ul className="material-list" style={{ marginTop: 12 }}>
+              {conversations.map((conversation) => (
+                <ConversationRow
+                  key={conversation.id}
+                  conversation={conversation}
+                  formatTime={formatTime}
+                  onNavigate={(id) => navigate(`/projects/${projectId}/conversations/${id}`)}
+                  onRename={handleRenameConversation}
+                  onDelete={handleDeleteConversation}
+                />
+              ))}
+            </ul>
+          )}
         </div>
-        {conversations.length === 0 && (
-          <p className="subtitle" style={{ marginTop: 12 }}>
-            還沒有對話，輸入名稱後點「開新對話」開始產生測試用例。
-          </p>
-        )}
-        {conversations.length > 0 && (
-          <ul className="material-list" style={{ marginTop: 12 }}>
-            {conversations.map((conversation) => (
-              <ConversationRow
-                key={conversation.id}
-                conversation={conversation}
-                formatTime={formatTime}
-                onNavigate={(id) => navigate(`/projects/${projectId}/conversations/${id}`)}
-                onRename={handleRenameConversation}
-                onDelete={handleDeleteConversation}
-              />
-            ))}
-          </ul>
-        )}
-      </div>
 
-      <MaterialLibraryPanel
-        materials={materials}
-        busy={busy}
-        onUpload={handleUpload}
-        onAddText={handleAddText}
-        onRemoveMaterial={handleRemoveMaterial}
-        onUpdateMaterial={handleUpdateMaterial}
-      />
+        <MaterialLibraryPanel
+          materials={materials}
+          busy={busy}
+          onUpload={handleUpload}
+          onAddText={handleAddText}
+          onRemoveMaterial={handleRemoveMaterial}
+          onUpdateMaterial={handleUpdateMaterial}
+        />
+      </div>
     </div>
   )
 }
