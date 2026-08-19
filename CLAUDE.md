@@ -66,5 +66,7 @@ frontend/src/
 
 ## 給你（Claude）的提醒
 
-- git commit 訊息一律用繁體中文，遵守 `~/.claude/skills/commit-convention/SKILL.md` 那套 Angular 慣例規則，而且**改動範圍不要一次太大**，做完一個有獨立意義的小改動就先 commit。
+- git commit 訊息一律用繁體中文，遵守 commit-convention 那套 Angular 慣例規則，而且**改動範圍不要一次太大**，做完一個有獨立意義的小改動就先 commit。
+- 這個 repo 有自己的 `.claude/skills/`（目前收了 `commit-convention`、`pr-prep` 兩個），是使用者刻意在收集的「coding 專用 skill」集合，跟使用者機器上的全域 `~/.claude/skills/` 是各自獨立的複製，**不會自動同步**——改進了其中一份的內容，記得問一下要不要也同步更新另一份，不然兩邊會慢慢長歪。專案內的這份會跟著 repo 進版控、換機器/換人 clone 都會自動帶到。
+- 這個 repo 已經開始用 PR + CI + branch protection 的流程（`.github/workflows/ci.yml`，check 名稱 `frontend`/`backend`，`master` 有設 branch ruleset 要求兩個 check 都過），不是每次都直接 commit 到 `master`；細節、什麼時候該走完整流程參考 `pr-prep` skill。
 - 這個專案的 UI/邏輯改動，改完要實際在瀏覽器裡點過一次再回報完成，不要只憑型別檢查或 build 過就說做完了——這個專案的歷史上已經因為只信任型別檢查而漏掉好幾個真的會影響操作體驗的 bug（例如聊天泡泡沒有依角色左右對齊、欄位編號跳號）。
