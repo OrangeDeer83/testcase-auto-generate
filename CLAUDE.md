@@ -38,24 +38,34 @@ npm run dev
    - `LLM_API_KEY`、`LLM_MODEL`
    - 這把金鑰是敏感資訊：不要主動去讀這個檔案內容印出來，也不要幫使用者把它貼進聊天視窗以外的地方。
 2. **`requirements.txt` 用的是版本下限（`>=`）不是鎖死版本**，因為本機 Python 3.14 太新，鎖死的 `pydantic==2.9.2` 沒有預編譯 wheel 會編譯失敗。換機器如果 Python 版本較舊，理論上也還是能裝，但沒重新驗證過。
-3. 沒有資料庫，session 狀態只存在後端記憶體裡，重啟後端 = 所有進行中的 session 都不見。這是刻意設計（單次使用完即下載，不留歷史）。
+3. 沒有資料庫，但**不是存在後端記憶體**——2026-08-19 起改成檔案式持久化（`backend/app/services/{data_paths,project_store,conversation_store}.py`），資料存在 `backend/data/projects/{id}/{project.json, materials/*.json, conversations/*.json}`（不進 git，比照 `backend/logs/` 處理）。重啟後端資料不會消失，使用者可以離開後回來繼續同一個專案/對話。
 4. `backend/logs/app.log` 有每次呼叫模型的完整 request/response 記錄（不進 git），畫面結果跟預期不符時先看這個，不要用猜的。
 
 ## 專案結構速覽
 
 ```
 backend/app/
-  routers/        upload（含文字/GET 素材列表）、generate、chat、export（/export 匯出 Markdown、/export/excel 匯出 Excel）
+  routers/        projects（專案 CRUD + 素材管理）、conversations（對話 CRUD/產生/聊天）、
+                   export（掛在對話底下：GET /api/projects/{id}/conversations/{id}/export/excel）
   services/
     parsers/       PDF/Word/Excel/Markdown/圖片 解析
     llm_client.py  OpenAI 相容 client（支援 vision），呼叫前後會寫 log
     prompt_builder.py  SYSTEM_PROMPT（初次產生）+ SYSTEM_PROMPT_CHAT（對話式編輯）
     excel_export.py    TestCase 清單 → .xlsx（sheet「Test Cases」，欄位對應用例管理系統匯入格式）
-  models/          Pydantic schema（ParsedMaterial 有 id、TestCase 沒有 id，欄位含 module/notes）
+    markdown_export.py Markdown 匯出邏輯還在，但目前沒有對應路由（見下方已知限制）
+    data_paths.py / project_store.py / conversation_store.py
+                        檔案式持久化儲存層（見上方地雷第 3 點），data_paths.py 提供 atomic
+                        write（os.replace）跟 RLock，project_store/conversation_store 是各自的 CRUD
+  models/          Pydantic schema：Project、Conversation（取代舊的 session.py）、
+                   ParsedMaterial（有 id）、TestCase（沒有 id，欄位含 module/notes）
 frontend/src/
-  App.tsx          主要狀態機：upload → workspace 兩階段
+  App.tsx          react-router-dom 路由設定：/（HomePage）→ /projects/:id（ProjectPage）
+                   → /projects/:id/conversations/:id（WorkspacePage）
+  pages/           HomePage（專案列表/建立/刪除）、ProjectPage（素材庫+對話列表）、
+                   WorkspacePage（聊天+表格，原本的主要工作畫面，含直接用網址重整還原邏輯）
   diffTestCases.ts 純前端比對聊天前後 test_cases 差異（依用例「名稱」配對，不是穩定 id）
-  components/      UploadPanel / ChatPanel / TestCaseTable / MaterialsModal / ExportButton
+  components/      ChatPanel / TestCaseTable / MaterialLibraryPanel / MaterialSelector /
+                   MaterialRow / MaterialsModal / ExportButton
 ```
 
 ## 已知限制（如果使用者抱怨這些，不用意外）
