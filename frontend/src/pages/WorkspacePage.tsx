@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
 import {
   addTextMaterial,
@@ -56,6 +56,11 @@ export function WorkspacePage() {
   const { projectId, materials, refreshShell, setError } = useOutletContext<ShellContext>()
 
   const [conversationName, setConversationName] = useState('')
+  // conversationName 是輸入框當下顯示的值，每次打字 onChange 都會同步更新；
+  // 這裡要另外記「後端目前實際存的名字」，commitRename 才能判斷使用者是否真的
+  // 改了名字——如果直接拿 conversationName 比較，因為它自己就是打字當下的值，
+  // 判斷永遠會是「沒改變」，導致重新命名永遠不會真的送出去存。
+  const savedNameRef = useRef('')
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([])
   const [result, setResult] = useState<GenerationResult>(EMPTY_RESULT)
   const [chatLog, setChatLog] = useState<ChatMessage[]>([])
@@ -74,6 +79,7 @@ export function WorkspacePage() {
     Promise.all([getMaterials(projectId), getConversation(projectId, conversationId)])
       .then(([mats, conversation]) => {
         setConversationName(conversation.name)
+        savedNameRef.current = conversation.name
         setSelectedMaterialIds(conversation.selectedMaterialIds)
         setResult(conversation.lastResult ?? EMPTY_RESULT)
         setChatLog(hydrateChatLog(conversation.chatLog, mats))
@@ -112,16 +118,18 @@ export function WorkspacePage() {
 
   const commitRename = async (name: string) => {
     const trimmed = name.trim()
-    if (!trimmed || trimmed === conversationName) {
-      setConversationName(conversationName)
+    if (!trimmed || trimmed === savedNameRef.current) {
+      setConversationName(savedNameRef.current)
       return
     }
     setConversationName(trimmed)
     try {
       await updateConversation(projectId, conversationId, { name: trimmed })
+      savedNameRef.current = trimmed
       await refreshShell()
     } catch (err) {
       setError(err instanceof Error ? err.message : '重新命名對話失敗')
+      setConversationName(savedNameRef.current)
     }
   }
 

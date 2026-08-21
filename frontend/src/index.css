@@ -1665,6 +1665,30 @@ tr.cell-highlight td {
   transform: none;
 }
 
+.case-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.case-delete-button {
+  background: transparent;
+  color: #b3312c;
+  border: 1px solid transparent;
+  box-shadow: none;
+  font-size: 0.8rem;
+  padding: 6px 10px;
+}
+
+.case-delete-button:hover:not(:disabled) {
+  background: #fdecea;
+  border-color: #f3c6c2;
+  box-shadow: none;
+  transform: none;
+}
+
 .field-row {
   display: flex;
   gap: 16px;
