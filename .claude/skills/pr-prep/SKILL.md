@@ -1,6 +1,6 @@
 ---
 name: pr-prep
-description: PR 從準備到合併整個生命週期都用這個 skill。觸發時機包含使用者提到「PR」「pull request」「發 PR」「開 PR」「準備發 PR」「這個改完可以送 PR 了嗎」「幫我寫 PR 標題/描述」，或使用者準備要執行 `gh pr create` 之前；也包含 PR 開了之後的後續——CI 紅燈要查原因、要設定 branch protection／ruleset 讓 CI 沒過不能合併、合併後要同步回正式環境。即使使用者沒有明講要用這個流程，只要語意上是「要把目前的改動送出去給人審查/合併」或「PR/CI 卡住了」，就該主動觸發。檢查跟產生內容可以自己做，但絕對不要自動執行 `gh pr create`、實際點下合併按鈕、或修改 branch protection 設定——這些都要使用者自己確認後才動手。
+description: PR 從準備到合併整個生命週期都用這個 skill。觸發時機包含使用者提到「PR」「pull request」「發 PR」「開 PR」「準備發 PR」「這個改完可以送 PR 了嗎」「幫我寫 PR 標題/描述」，或使用者準備要執行 `gh pr create` 之前；也包含 PR 開了之後的後續——CI 紅燈要查原因、要設定 branch protection／ruleset 讓 CI 沒過不能合併、合併後要同步回正式環境。即使使用者沒有明講要用這個流程，只要語意上是「要把目前的改動送出去給人審查/合併」或「PR/CI 卡住了」，就該主動觸發。檢查跟產生內容可以自己做；如果 `gh` CLI 已安裝且已登入（`gh auth status` 確認），Step 3 檢查清單過關後可以直接用 `gh pr create` 主動送出，不用每次額外問「可以送出嗎」——這是使用者已經明確授權的標準流程。但實際點下合併按鈕、或修改 branch protection 設定，仍然一定要使用者自己確認後才動手。
 ---
 
 # PR 準備助手
@@ -85,14 +85,44 @@ git status
 
 語言跟著 Step 1 偵測到的 repo 慣例走（這個環境常見的情況是 commit message 用繁體中文，PR 描述也應該跟著用繁體中文，除非 repo 明顯是英文專案）。
 
-## Step 5：收尾——絕對不要自己送出
+## Step 5：收尾——送出 PR
 
-把產生好的標題/描述完整貼給使用者看。確認要送出之後：
+**先檢查 `gh auth status`。這決定走哪條路：**
 
-- **有 `gh` CLI 且已登入**（`gh auth status` 確認）：使用者同意後可以用 `gh pr create --title "<標題>" --body "<描述>"` 直接開，不用使用者手動貼內容。
-- **沒有 `gh` CLI，也沒有能操作的已登入瀏覽器**：不要嘗試自己硬闖 GitHub 網頁（不能替使用者輸入帳密登入）。改成：先確認 head 分支已經 push 到 remote（`git push -u origin <branch>`，一樣要先取得同意），然後把 `https://github.com/<owner>/<repo>/pull/new/<branch>` 這個連結，連同已經產生好的標題/描述一起貼給使用者，讓他自己開瀏覽器點連結、貼上內容、按下 Create pull request。
+### 路徑 A：有 `gh` CLI 且已登入 → 直接主動送出
 
-不管走哪條路，都不要在使用者還沒看過內容、沒有明確說「可以送出」之前就建立 PR。這跟建立分支、push 到 remote 之類會影響共享狀態的操作一樣，都需要先取得使用者的明確同意，而且「push 分支」跟「開 PR」是兩個各自需要同意的動作，即使使用者已經同意了其中一個，也不代表另一個自動獲得同意。
+不用再額外問一次「可以送出嗎」——這是使用者已經明確授權的標準流程（詳見本檔案下方「gh 主動送出的授權範圍」）。步驟：
+
+1. 確認 head 分支已經 push 到 remote（`git push -u origin <branch>`；如果這個分支本來就是新建的，push 本身不需要再另外問，屬於這個流程的一部分）。
+2. 把 PR 內文寫進一個暫存檔（用 heredoc 或 Write 工具皆可，避免中文/換行/特殊字元在命令列裡跳脫出錯），執行：
+   ```
+   gh pr create --title "<標題>" --body-file <暫存檔路徑> --base <base> --head <head>
+   ```
+3. `gh pr create` 執行完會直接印出 PR 網址，用 `gh pr view <number>` 或 `--web=false` 的輸出確認標題/內文/base/head 都正確，把網址回報給使用者。
+4. 標題/描述本身還是照 Step 4 產生、值得讓使用者看到——可以在回報「PR 已建立」的同時附上內容摘要，不用事先暫停等待核准，但也不要省略讓使用者無從得知內容。
+
+### 路徑 B：沒有 `gh` CLI，或沒登入
+
+先問使用者要不要裝、要不要登入（`winget install --id GitHub.cli`／`gh auth login`，登入是使用者自己的帳密流程，不能代勞），裝好登入後回到路徑 A。使用者不想裝／暫時不想登入時，才走手動流程：
+
+1. 確認 head 分支已經 push 到 remote（`git push -u origin <branch>`，這一步仍要先取得同意）。
+2. 把連結連同已經產生好的標題/描述一起貼給使用者，讓他自己開瀏覽器點連結、按下 Create pull request。
+   - **優先給預先帶好標題/描述的連結**，不要讓使用者手動複製貼上：GitHub 的 compare 頁面支援用 query string 帶入表單內容，格式是 `https://github.com/<owner>/<repo>/compare/<base>...<head>?quick_pull=1&title=<url-encoded 標題>&body=<url-encoded 描述>`。標題跟描述都要正確 URL-encode（含中文、換行、`#`、`&` 等符號），不要手動拼字串湊編碼，用 Bash 起一段小 script（例如 Python 的 `urllib.parse.urlencode`）產生，避免編錯壞掉整條連結。
+   - 這條連結即使很長（幾千字元）通常也不是問題，但一定要提醒使用者：**這是預先帶好內容的連結，不是已經送出的 PR**，他自己點開、看過欄位內容、按下 Create pull request 才算數。
+   - 因為你自己的瀏覽器工具通常沒有登入使用者的 GitHub 帳號，點開這條連結大概率只能看到公開的 compare/diff 頁（看得到 commit 列表、改動檔案數，可以拿來核對範圍是否跟本地一致），看不到「Create pull request」表單本身，所以**不要宣稱已經幫使用者驗證過標題/描述真的有帶進表單**——誠實講清楚驗證到哪一步（連結有效、compare 範圍正確），哪一步只能請使用者自己確認（表單有沒有真的預填成功）。
+   - 保險起見，同時把純文字版的標題/描述也貼給使用者，讓他在預填連結萬一沒生效（例如瀏覽器擋掉過長 URL、或欄位沒帶到）時可以直接手動貼上，不用回頭再要一次。
+3. 這條路徑下，一樣不要在使用者還沒看過內容、沒有明確說「可以送出」之前就建立 PR。
+
+### gh 主動送出的授權範圍
+
+這個「不用每次問」的授權，範圍僅限於**用 `gh pr create` 建立 PR 本身**，不包含：
+
+- 合併 PR（`gh pr merge`）——一律要使用者自己按或明確同意。
+- 修改 branch protection / ruleset。
+- Force push、改寫已發布的 commit。
+- 建立 PR 前跳過 Step 3 檢查清單，或檢查清單有疑慮項目時不問使用者就逕自送出——有疑慮還是要照 Step 3 的規則先確認。
+
+如果同一個 repo 之前沒用過這個 skill、或不確定使用者是不是這個意思，仍然可以照舊先問一次；但只要這個 repo 已經用 `gh pr create` 成功送過 PR，之後同一個 repo、同一個使用者的請求就照路徑 A 直接執行，不用重新問。
 
 ## Step 6：PR 開了之後
 
