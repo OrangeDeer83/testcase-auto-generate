@@ -167,13 +167,17 @@ export function TestCaseTable({
         >
           <span className="case-number">{caseIndex + 1}</span>
           <div className="case-card-header">
-            <input
-              className="name-input"
-              value={testCase.name}
-              onChange={(e) => updateCase(caseIndex, { name: e.target.value })}
-              onFocus={focusClears([`case:${caseIndex}`])}
-              placeholder="用例名稱"
-            />
+            {expanded ? (
+              <input
+                className="name-input"
+                value={testCase.name}
+                onChange={(e) => updateCase(caseIndex, { name: e.target.value })}
+                onFocus={focusClears([`case:${caseIndex}`])}
+                placeholder="用例名稱"
+              />
+            ) : (
+              <span className="case-name-display">{testCase.name || '（未命名用例）'}</span>
+            )}
             {!expanded && (
               <>
                 <span className="case-priority-pill">{testCase.priority || '—'}</span>
