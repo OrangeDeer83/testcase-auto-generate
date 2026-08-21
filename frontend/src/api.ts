@@ -9,7 +9,11 @@ import type {
   UploadedMaterial,
 } from './types'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+// VITE_API_BASE_URL 沒設時，用「當初瀏覽器實際打進來的網域／IP」自動組出後端位址，
+// 而不是寫死某個 IP——寫死的話換網路環境（DHCP 重新配到不同區網 IP）就會直接連不上。
+// 這個 fallback 假設後端固定用 8000 埠；如果後端不是 8000（例如測試環境用 18002），
+// 或前後端根本不在同一台主機，就要在 .env 裡明確設定 VITE_API_BASE_URL 覆蓋這個推斷值。
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? `http://${window.location.hostname}:8000`
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
