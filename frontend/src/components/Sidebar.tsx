@@ -1,7 +1,55 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import type { ConversationSummary, Project } from '../types'
+
+/**
+ * 收合側欄的圖示都擠在 64px 寬、且對話清單本身有 overflow-y:auto 的容器裡，
+ * 用一般的 CSS absolute tooltip 會被清單容器的捲動邊界裁掉，所以改用 portal +
+ * 滑鼠移入時量測位置，直接掛到 document.body 上，不受任何祖先容器的 overflow 影響。
+ */
+function IconTooltip({
+  label,
+  meta,
+  children,
+}: {
+  label: string
+  meta?: string
+  children: ReactNode
+}) {
+  const anchorRef = useRef<HTMLSpanElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+
+  const show = () => {
+    const rect = anchorRef.current?.getBoundingClientRect()
+    if (!rect) return
+    setPos({ top: rect.top + rect.height / 2, left: rect.right + 10 })
+  }
+  const hide = () => setPos(null)
+
+  return (
+    <span
+      className="sidebar-tooltip-anchor"
+      ref={anchorRef}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+    >
+      {children}
+      {pos &&
+        createPortal(
+          <div className="sidebar-tooltip" role="tooltip" style={{ top: pos.top, left: pos.left }}>
+            <span className="sidebar-tooltip-title">{label}</span>
+            {meta && <span className="sidebar-tooltip-meta">{meta}</span>}
+          </div>,
+          document.body,
+        )}
+    </span>
+  )
+}
 
 interface SidebarProps {
   projectId: string
@@ -45,16 +93,19 @@ function ConversationNavItem({
 
   if (collapsed) {
     return (
-      <button
-        type="button"
-        className={`sidebar-collapsed-icon${active ? ' active' : ''}`}
-        title={conversation.name}
-        onClick={onNavigate}
+      <IconTooltip
+        label={conversation.name}
+        meta={hasResult ? `已產生 ${conversation.testCaseCount} 筆測試用例` : '尚未產生測試用例'}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 11.5a8.4 8.4 0 01-8.5 8.4 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8A8.5 8.5 0 0112.5 3h.5a8.5 8.5 0 018 8v.5z" />
-        </svg>
-      </button>
+        <button
+          type="button"
+          className={`sidebar-collapsed-icon sidebar-collapsed-avatar${active ? ' active' : ''}`}
+          onClick={onNavigate}
+        >
+          {conversation.name.trim().slice(0, 1) || '?'}
+          {!hasResult && <span className="sidebar-collapsed-dot" />}
+        </button>
+      </IconTooltip>
     )
   }
 
@@ -124,53 +175,66 @@ export function Sidebar({
   if (collapsed) {
     return (
       <div className="sidebar sidebar-collapsed">
-        <div className="sidebar-collapsed-logo" title={project?.name ?? '專案'}>
-          {(project?.name ?? '?').slice(0, 1)}
+        <div className="sidebar-collapsed-top">
+          <IconTooltip label="展開側欄">
+            <button
+              type="button"
+              className="sidebar-collapse-toggle"
+              onClick={() => setCollapsed(false)}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M13 17l5-5-5-5M6 17l5-5-5-5" />
+              </svg>
+            </button>
+          </IconTooltip>
+
+          <IconTooltip label={project?.name ?? '專案'}>
+            <div className="sidebar-collapsed-logo">{(project?.name ?? '?').slice(0, 1)}</div>
+          </IconTooltip>
+
+          <IconTooltip label="素材庫" meta={`${materialCount} 項`}>
+            <NavLink
+              to={`/projects/${projectId}`}
+              end
+              className={({ isActive }) => `sidebar-collapsed-icon${isActive ? ' active' : ''}`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M21 15l-5-5L5 21" />
+              </svg>
+            </NavLink>
+          </IconTooltip>
+          <div className="sidebar-collapsed-divider" />
         </div>
-        <NavLink
-          to={`/projects/${projectId}`}
-          end
-          className={({ isActive }) => `sidebar-collapsed-icon${isActive ? ' active' : ''}`}
-          title="素材庫"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <path d="M21 15l-5-5L5 21" />
-          </svg>
-        </NavLink>
-        <div className="sidebar-collapsed-divider" />
-        {conversations.map((conversation) => (
-          <ConversationNavItem
-            key={conversation.id}
-            conversation={conversation}
-            active={conversation.id === activeConversationId}
-            collapsed
-            onNavigate={() => navigate(`/projects/${projectId}/conversations/${conversation.id}`)}
-            onRename={(name) => onRenameConversation(conversation.id, name)}
-            onDelete={() => onDeleteConversation(conversation.id, conversation.name)}
-          />
-        ))}
-        <button
-          type="button"
-          className="sidebar-collapsed-icon sidebar-collapsed-add"
-          title="開新對話"
-          onClick={onCreateConversation}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className="sidebar-collapse-toggle"
-          title="展開側欄"
-          onClick={() => setCollapsed(false)}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M13 17l5-5-5-5M6 17l5-5-5-5" />
-          </svg>
-        </button>
+
+        <div className="sidebar-collapsed-list">
+          {conversations.map((conversation) => (
+            <ConversationNavItem
+              key={conversation.id}
+              conversation={conversation}
+              active={conversation.id === activeConversationId}
+              collapsed
+              onNavigate={() => navigate(`/projects/${projectId}/conversations/${conversation.id}`)}
+              onRename={(name) => onRenameConversation(conversation.id, name)}
+              onDelete={() => onDeleteConversation(conversation.id, conversation.name)}
+            />
+          ))}
+        </div>
+
+        <div className="sidebar-collapsed-bottom">
+          <IconTooltip label="開新對話">
+            <button
+              type="button"
+              className="sidebar-collapsed-icon sidebar-collapsed-add"
+              onClick={onCreateConversation}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </IconTooltip>
+        </div>
       </div>
     )
   }

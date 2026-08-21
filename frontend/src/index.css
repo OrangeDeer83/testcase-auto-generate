@@ -79,6 +79,7 @@ body {
 .sidebar {
   width: 224px;
   flex-shrink: 0;
+  box-sizing: border-box;
   background: var(--color-panel);
   border-right: 1px solid var(--color-border-soft);
   display: flex;
@@ -258,7 +259,37 @@ body {
   width: 64px;
   align-items: center;
   padding: 14px 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.sidebar-collapsed-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+}
+
+.sidebar-collapsed-list {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.sidebar-collapsed-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding-top: 6px;
 }
 
 .sidebar-collapsed-logo {
@@ -272,13 +303,13 @@ body {
   justify-content: center;
   font-size: 12px;
   font-weight: 700;
-  margin-bottom: 10px;
   flex-shrink: 0;
 }
 
 .sidebar-collapsed-icon {
   width: 36px;
   height: 36px;
+  padding: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-muted);
@@ -302,6 +333,87 @@ body {
   color: var(--color-primary);
 }
 
+.sidebar-collapsed-avatar {
+  position: relative;
+  background: var(--color-panel-alt);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.sidebar-collapsed-avatar.active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.sidebar-collapsed-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 1.5px solid var(--color-panel);
+}
+
+/* ---- 收合側欄圖示的浮動說明（透過 portal 掛到 body，不受清單捲動邊界裁切） ---- */
+
+.sidebar-tooltip-anchor {
+  display: flex;
+  position: relative;
+}
+
+.sidebar-tooltip {
+  position: fixed;
+  transform: translateY(-50%);
+  background: var(--color-primary);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  z-index: 1000;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  animation: sidebar-tooltip-in 0.12s ease-out;
+}
+
+.sidebar-tooltip::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: var(--color-primary);
+}
+
+.sidebar-tooltip-title {
+  font-weight: 700;
+}
+
+.sidebar-tooltip-meta {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+@keyframes sidebar-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
 .sidebar-collapsed-divider {
   width: 28px;
   height: 1px;
@@ -312,11 +424,6 @@ body {
 
 .sidebar-collapsed-add {
   border: 1px dashed var(--color-border);
-  margin-top: 2px;
-}
-
-.sidebar.sidebar-collapsed .sidebar-collapse-toggle {
-  margin-top: auto;
 }
 
 /* ---- 專案切換小選單 ---- */
