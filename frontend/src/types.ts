@@ -40,6 +40,7 @@ export interface UploadedMaterial {
   kind: 'text' | 'image'
   text?: string
   image_data_url?: string
+  embedded_images?: string[]
   description: string
 }
 

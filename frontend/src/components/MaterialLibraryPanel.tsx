@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import type { ClipboardEvent } from 'react'
 import { getPastedImageFile } from '../clipboardImage'
 import type { UploadedMaterial } from '../types'
-import { MaterialRow } from './MaterialRow'
+import { MaterialGrid } from './MaterialGrid'
 import { MaterialsModal } from './MaterialsModal'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
@@ -55,6 +55,11 @@ export function MaterialLibraryPanel({
   const [libraryExpanded, setLibraryExpanded] = useState(
     materials.length <= LIBRARY_COLLAPSE_THRESHOLD,
   )
+
+  const focusUpload = () => {
+    inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    inputRef.current?.click()
+  }
 
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
@@ -179,17 +184,13 @@ export function MaterialLibraryPanel({
             素材清單（共 {materials.length} 項，點擊可編輯說明／檔名）
           </button>
           {libraryExpanded && (
-            <ul className="material-list">
-              {materials.map((material) => (
-                <MaterialRow
-                  key={material.id}
-                  material={material}
-                  busy={busy}
-                  onRemove={onRemoveMaterial}
-                  onUpdate={onUpdateMaterial}
-                />
-              ))}
-            </ul>
+            <MaterialGrid
+              materials={materials}
+              busy={busy}
+              onUpdateMaterial={onUpdateMaterial}
+              onRemoveMaterial={onRemoveMaterial}
+              onAddClick={focusUpload}
+            />
           )}
         </div>
       )}

@@ -151,6 +151,9 @@ export function TestCaseTable({
   }
 
   const removeCase = (caseIndex: number) => {
+    if (!window.confirm(`確定要刪除「${testCases[caseIndex].name || '（未命名用例）'}」這筆測試用例嗎？無法復原。`)) {
+      return
+    }
     onChange(testCases.filter((_, idx) => idx !== caseIndex))
   }
 
@@ -202,11 +205,6 @@ export function TestCaseTable({
                 <path d="M6 9l6 6 6-6" />
               </svg>
             </button>
-            {expanded && (
-              <button className="secondary" onClick={() => removeCase(caseIndex)}>
-                刪除用例
-              </button>
-            )}
           </div>
 
           {expanded && (
@@ -404,6 +402,12 @@ export function TestCaseTable({
                 </div>
               )}
           </label>
+
+          <div className="case-footer">
+            <button type="button" className="case-delete-button" onClick={() => removeCase(caseIndex)}>
+              刪除這筆測試用例
+            </button>
+          </div>
           </>
           )}
         </div>

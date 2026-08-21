@@ -43,9 +43,9 @@ class ConversationCreatePayload(BaseModel):
 
 @router.post("", response_model=Conversation)
 def create_conversation(project_id: str, payload: ConversationCreatePayload):
-    project = _get_project_or_404(project_id)
+    _get_project_or_404(project_id)
     name = payload.name.strip() or "新對話"
-    return conversation_store.create_conversation(project_id, name, list(project.material_ids))
+    return conversation_store.create_conversation(project_id, name, [])
 
 
 @router.get("", response_model=list[ConversationSummary])

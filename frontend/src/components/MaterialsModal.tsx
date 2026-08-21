@@ -33,6 +33,18 @@ export function MaterialsModal({ materials, title = '素材內容', onClose }: M
             {material.kind === 'text' && material.text && (
               <pre className="material-detail-text">{material.text}</pre>
             )}
+            {!!material.embedded_images?.length && (
+              <div className="material-embedded-images">
+                <p className="material-embedded-images-label">
+                  文件內夾帶的圖片（共 {material.embedded_images.length} 張）：
+                </p>
+                <div className="material-embedded-images-grid">
+                  {material.embedded_images.map((src, index) => (
+                    <img key={index} src={src} alt={`${material.filename} 內嵌圖片 ${index + 1}`} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

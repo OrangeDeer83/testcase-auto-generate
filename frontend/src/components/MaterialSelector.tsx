@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import type { ClipboardEvent } from 'react'
 import { getPastedImageFile } from '../clipboardImage'
 import type { UploadedMaterial } from '../types'
-import { MaterialRow } from './MaterialRow'
+import { MaterialGrid } from './MaterialGrid'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
 const LIBRARY_COLLAPSE_THRESHOLD = 4
@@ -64,6 +64,11 @@ export function MaterialSelector({
     setNewText('')
   }
 
+  const focusUpload = () => {
+    inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    inputRef.current?.click()
+  }
+
   return (
     <div>
       <p className="text-field-label">新增這次對話要用的素材</p>
@@ -102,24 +107,14 @@ export function MaterialSelector({
             專案素材庫（共 {materials.length} 項，已勾選 {selectedIds.length} 項）
           </button>
           {libraryExpanded && (
-            <ul className="material-list">
-              {materials.map((material) => (
-                <MaterialRow
-                  key={material.id}
-                  material={material}
-                  busy={busy}
-                  onUpdate={onUpdateMaterial}
-                  leadingControl={
-                    <input
-                      type="checkbox"
-                      checked={selectedSet.has(material.id)}
-                      disabled={busy}
-                      onChange={() => toggle(material.id)}
-                    />
-                  }
-                />
-              ))}
-            </ul>
+            <MaterialGrid
+              materials={materials}
+              busy={busy}
+              onUpdateMaterial={onUpdateMaterial}
+              selectedIds={selectedSet}
+              onToggleSelect={toggle}
+              onAddClick={focusUpload}
+            />
           )}
         </div>
       )}
