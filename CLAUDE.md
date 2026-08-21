@@ -25,7 +25,7 @@ uvicorn app.main:app --reload --port 8000
 ```bash
 cd frontend
 npm install
-cp .env.example .env      # 預設指向 http://localhost:8000
+cp .env.example .env      # 不特別設定的話，前端會自動用瀏覽器當下的網域/IP 打 8000 埠的後端（見 FIX_NOTES.md）
 npm run dev
 ```
 
