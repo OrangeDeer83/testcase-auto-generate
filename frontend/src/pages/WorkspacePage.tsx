@@ -61,6 +61,9 @@ export function WorkspacePage() {
   // 改了名字——如果直接拿 conversationName 比較，因為它自己就是打字當下的值，
   // 判斷永遠會是「沒改變」，導致重新命名永遠不會真的送出去存。
   const savedNameRef = useRef('')
+  // 剛從後端載入（或切換對話）時 result 也會變動一次，但那次不是使用者手動編輯，
+  // 不該觸發自動存檔；用這個旗標讓自動存檔的 effect 跳過緊接在載入之後的那一次。
+  const skipNextAutosaveRef = useRef(true)
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([])
   const [result, setResult] = useState<GenerationResult>(EMPTY_RESULT)
   const [chatLog, setChatLog] = useState<ChatMessage[]>([])
@@ -76,6 +79,7 @@ export function WorkspacePage() {
     setLoaded(false)
     setHighlightedKeys(new Set())
     setPreviousValues(new Map())
+    skipNextAutosaveRef.current = true
     Promise.all([getMaterials(projectId), getConversation(projectId, conversationId)])
       .then(([mats, conversation]) => {
         setConversationName(conversation.name)
@@ -88,6 +92,25 @@ export function WorkspacePage() {
       .catch((err) => setError(err instanceof Error ? err.message : '讀取對話失敗'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, conversationId])
+
+  // 使用者在表格裡手動編輯（新增/刪除步驟或用例、改欄位文字）只會更新這裡的
+  // React 狀態，不會自動存回後端——後端真正落地寫檔只發生在送出聊天訊息、
+  // 或按下匯出的當下。這個 effect 補上「手動編輯也要存檔」：debounce 一段時間
+  // 沒有新的編輯動作，才真的呼叫 API，避免打字時每個按鍵都送一次請求。
+  useEffect(() => {
+    if (!loaded || !projectId || !conversationId) return
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false
+      return
+    }
+    const timer = setTimeout(() => {
+      updateTestCases(projectId, conversationId, result).catch((err) => {
+        setError(err instanceof Error ? err.message : '自動儲存測試用例失敗')
+      })
+    }, 1000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, loaded])
 
   if (!projectId || !conversationId) return null
 
