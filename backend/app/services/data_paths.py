@@ -7,7 +7,9 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = BACKEND_DIR / "data"
+# APP_DATA_DIR 可覆寫資料目錄位置，讓 E2E 測試能指到獨立的暫存目錄，
+# 不會跟開發時手動啟動的 backend 寫進同一份 backend/data。
+DATA_DIR = Path(os.environ.get("APP_DATA_DIR", str(BACKEND_DIR / "data")))
 PROJECTS_DIR = DATA_DIR / "projects"
 
 T = TypeVar("T", bound=BaseModel)
