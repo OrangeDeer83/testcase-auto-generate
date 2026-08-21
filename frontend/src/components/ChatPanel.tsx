@@ -62,12 +62,7 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
   }
 
   return (
-    <div className="panel">
-      <h2>2. 對話</h2>
-      <p className="subtitle">
-        回答 LLM 提出的澄清問題，或直接輸入指令請它修改測試用例——可以一次調整多筆用例、多個步驟，也可以附上圖片或文件說明。
-      </p>
-
+    <>
       <div className="chat-log">
         {log.map((entry, idx) => (
           <div
@@ -153,6 +148,6 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
           送出
         </button>
       </div>
-    </div>
+    </>
   )
 }

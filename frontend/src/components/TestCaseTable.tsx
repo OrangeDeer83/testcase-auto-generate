@@ -1,5 +1,10 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { TestCase, TestStep } from '../types'
+
+interface DragInfo {
+  caseIndex: number
+  stepIndex: number
+}
 
 interface TestCaseTableProps {
   testCases: TestCase[]
@@ -69,6 +74,41 @@ export function TestCaseTable({
   const previousValueOf = (key: string) => previousValues?.get(key)
   const focusClears = (keys: string[]) => () => onFieldFocus?.(keys)
 
+  const [dragInfo, setDragInfo] = useState<DragInfo | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const [expandedIndices, setExpandedIndices] = useState<Set<number>>(
+    () => new Set(testCases.length <= 2 ? testCases.map((_, i) => i) : []),
+  )
+
+  // 模型剛改過的用例自動展開，讓使用者不用自己點開就能看到變動內容。
+  useEffect(() => {
+    if (!highlightedKeys || highlightedKeys.size === 0) return
+    setExpandedIndices((prev) => {
+      const next = new Set(prev)
+      let changed = false
+      highlightedKeys.forEach((key) => {
+        const match = key.match(/^case:(\d+)/)
+        if (match) {
+          const index = Number(match[1])
+          if (!next.has(index)) {
+            next.add(index)
+            changed = true
+          }
+        }
+      })
+      return changed ? next : prev
+    })
+  }, [highlightedKeys])
+
+  const toggleExpanded = (index: number) => {
+    setExpandedIndices((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  }
+
   const updateCase = (index: number, patch: Partial<TestCase>) => {
     const next = testCases.slice()
     next[index] = { ...next[index], ...patch }
@@ -86,6 +126,15 @@ export function TestCaseTable({
     const targetCase = testCases[caseIndex]
     const nextStepNo = targetCase.steps.length + 1
     updateCase(caseIndex, { steps: [...targetCase.steps, emptyStep(nextStepNo)] })
+  }
+
+  const reorderSteps = (caseIndex: number, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+    const targetCase = testCases[caseIndex]
+    const steps = targetCase.steps.slice()
+    const [moved] = steps.splice(fromIndex, 1)
+    steps.splice(toIndex, 0, moved)
+    updateCase(caseIndex, { steps: steps.map((step, idx) => ({ ...step, step_no: idx + 1 })) })
   }
 
   const removeStep = (caseIndex: number, stepIndex: number) => {
@@ -106,32 +155,62 @@ export function TestCaseTable({
   }
 
   return (
-    <div className="panel">
-      <h2>3. 確認與編輯測試用例</h2>
-      <p className="subtitle">
-        請檢查 LLM 產出的內容，如有需要可直接修改後再匯出。共 {testCases.length} 筆用例。
-      </p>
-
-      {testCases.map((testCase, caseIndex) => (
+    <div className="case-list">
+      {testCases.map((testCase, caseIndex) => {
+        const expanded = expandedIndices.has(caseIndex)
+        const stepCount = testCase.steps.length
+        return (
         <div
           id={`field-case:${caseIndex}`}
-          className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}`}
+          className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}${expanded ? '' : ' case-card-collapsed'}`}
           key={caseIndex}
         >
           <span className="case-number">{caseIndex + 1}</span>
           <div className="case-card-header">
-            <input
-              className="name-input"
-              value={testCase.name}
-              onChange={(e) => updateCase(caseIndex, { name: e.target.value })}
-              onFocus={focusClears([`case:${caseIndex}`])}
-              placeholder="用例名稱"
-            />
-            <button className="secondary" onClick={() => removeCase(caseIndex)}>
-              刪除用例
+            {expanded ? (
+              <input
+                className="name-input"
+                value={testCase.name}
+                onChange={(e) => updateCase(caseIndex, { name: e.target.value })}
+                onFocus={focusClears([`case:${caseIndex}`])}
+                placeholder="用例名稱"
+              />
+            ) : (
+              <span className="case-name-display">{testCase.name || '（未命名用例）'}</span>
+            )}
+            {!expanded && (
+              <>
+                <span className="case-priority-pill">{testCase.priority || '—'}</span>
+                <span className="case-step-count">{stepCount} 個步驟</span>
+              </>
+            )}
+            <button
+              type="button"
+              className="case-expand-toggle"
+              title={expanded ? '收合' : '展開'}
+              onClick={() => toggleExpanded(caseIndex)}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
             </button>
+            {expanded && (
+              <button className="secondary" onClick={() => removeCase(caseIndex)}>
+                刪除用例
+              </button>
+            )}
           </div>
 
+          {expanded && (
+          <>
           <div className="field-row">
             <label style={{ flex: 1 }}>
               所屬模塊
@@ -200,13 +279,55 @@ export function TestCaseTable({
                 const rowHighlighted = isHighlighted(stepKey)
                 const prevDescription = previousValueOf(`${stepKey}:description`)
                 const prevExpected = previousValueOf(`${stepKey}:expected_result`)
+                const isDragging =
+                  dragInfo?.caseIndex === caseIndex && dragInfo.stepIndex === stepIndex
+                const isDragOver =
+                  dragInfo?.caseIndex === caseIndex &&
+                  dragOverIndex === stepIndex &&
+                  dragInfo.stepIndex !== stepIndex
                 return (
                   <tr
                     id={`field-${stepKey}`}
                     key={stepIndex}
-                    className={rowHighlighted ? 'cell-highlight' : undefined}
+                    className={
+                      [
+                        rowHighlighted ? 'cell-highlight' : '',
+                        isDragging ? 'step-dragging' : '',
+                        isDragOver ? 'step-drag-over' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ') || undefined
+                    }
+                    onDragOver={(e) => {
+                      if (dragInfo?.caseIndex !== caseIndex) return
+                      e.preventDefault()
+                      if (dragOverIndex !== stepIndex) setDragOverIndex(stepIndex)
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      if (dragInfo?.caseIndex === caseIndex) {
+                        reorderSteps(caseIndex, dragInfo.stepIndex, stepIndex)
+                      }
+                      setDragInfo(null)
+                      setDragOverIndex(null)
+                    }}
                   >
-                    <td>{step.step_no}</td>
+                    <td
+                      className="step-number-cell"
+                      draggable={testCase.steps.length > 1}
+                      onDragStart={() => setDragInfo({ caseIndex, stepIndex })}
+                      onDragEnd={() => {
+                        setDragInfo(null)
+                        setDragOverIndex(null)
+                      }}
+                    >
+                      {testCase.steps.length > 1 && (
+                        <span className="step-drag-grip" aria-hidden="true">
+                          ⠿
+                        </span>
+                      )}
+                      {step.step_no}
+                    </td>
                     <td>
                       <AutoTextArea
                         id={`field-${stepKey}:description`}
@@ -283,8 +404,11 @@ export function TestCaseTable({
                 </div>
               )}
           </label>
+          </>
+          )}
         </div>
-      ))}
+        )
+      })}
 
       <button className="secondary" onClick={addCase}>
         + 新增測試用例

@@ -1,22 +1,24 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useOutletContext, useParams } from 'react-router-dom'
 import {
   addTextMaterial,
+  exportExcel,
   generate,
   getConversation,
   getMaterials,
-  saveChatLog,
   sendChatMessage,
+  saveChatLog,
   updateConversation,
   updateMaterial,
+  updateTestCases,
   uploadMaterials,
 } from '../api'
-import { ChatPanel } from '../components/ChatPanel'
-import { ExportButton } from '../components/ExportButton'
+import { FloatingChat } from '../components/FloatingChat'
 import { MaterialSelector } from '../components/MaterialSelector'
 import { MaterialsModal } from '../components/MaterialsModal'
 import { TestCaseTable } from '../components/TestCaseTable'
 import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
+import type { ShellContext } from './ProjectLayout'
 import type { ChatMessage, GenerationResult, UploadedMaterial } from '../types'
 
 const EMPTY_RESULT: GenerationResult = { test_cases: [], clarification_questions: [] }
@@ -50,17 +52,16 @@ function hydrateChatLog(chatLog: ChatMessage[], materials: UploadedMaterial[]): 
 }
 
 export function WorkspacePage() {
-  const { projectId, conversationId } = useParams<{ projectId: string; conversationId: string }>()
-  const navigate = useNavigate()
+  const { conversationId } = useParams<{ conversationId: string }>()
+  const { projectId, materials, refreshShell, setError } = useOutletContext<ShellContext>()
 
-  const [materials, setMaterials] = useState<UploadedMaterial[]>([])
   const [conversationName, setConversationName] = useState('')
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([])
   const [result, setResult] = useState<GenerationResult>(EMPTY_RESULT)
   const [chatLog, setChatLog] = useState<ChatMessage[]>([])
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
   const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
   const [showMaterials, setShowMaterials] = useState(false)
@@ -72,7 +73,6 @@ export function WorkspacePage() {
     setPreviousValues(new Map())
     Promise.all([getMaterials(projectId), getConversation(projectId, conversationId)])
       .then(([mats, conversation]) => {
-        setMaterials(mats)
         setConversationName(conversation.name)
         setSelectedMaterialIds(conversation.selectedMaterialIds)
         setResult(conversation.lastResult ?? EMPTY_RESULT)
@@ -110,6 +110,21 @@ export function WorkspacePage() {
     })
   }
 
+  const commitRename = async (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed || trimmed === conversationName) {
+      setConversationName(conversationName)
+      return
+    }
+    setConversationName(trimmed)
+    try {
+      await updateConversation(projectId, conversationId, { name: trimmed })
+      await refreshShell()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '重新命名對話失敗')
+    }
+  }
+
   const handleSelectedMaterialsChange = async (ids: string[]) => {
     setSelectedMaterialIds(ids)
     try {
@@ -131,9 +146,7 @@ export function WorkspacePage() {
       setError(err instanceof Error ? err.message : '更新素材失敗')
       return false
     } finally {
-      // 就算更新失敗（例如檔名重複被拒絕），也要重新讀取最新狀態，
-      // 讓素材列表的輸入框回復成後端實際存的值，不要停在使用者打的內容上。
-      setMaterials(await getMaterials(projectId))
+      await refreshShell()
     }
   }
 
@@ -141,8 +154,7 @@ export function WorkspacePage() {
     setError(null)
     try {
       const res = await uploadMaterials(projectId, files)
-      const refreshedMaterials = await getMaterials(projectId)
-      setMaterials(refreshedMaterials)
+      await refreshShell()
       const newIds = res.uploaded.map((u) => u.id)
       const nextSelected = [...selectedMaterialIds, ...newIds]
       setSelectedMaterialIds(nextSelected)
@@ -156,8 +168,7 @@ export function WorkspacePage() {
     setError(null)
     try {
       const res = await addTextMaterial(projectId, label, content)
-      const refreshedMaterials = await getMaterials(projectId)
-      setMaterials(refreshedMaterials)
+      await refreshShell()
       const newIds = res.uploaded.map((u) => u.id)
       const nextSelected = [...selectedMaterialIds, ...newIds]
       setSelectedMaterialIds(nextSelected)
@@ -204,7 +215,7 @@ export function WorkspacePage() {
         await updateConversation(projectId, conversationId, { selectedMaterialIds: nextSelected })
 
         const refreshedMaterials = await getMaterials(projectId)
-        setMaterials(refreshedMaterials)
+        await refreshShell()
         const material = refreshedMaterials.find((m) => m.id === uploaded.id)
         attachmentEntry = {
           id: newId(),
@@ -251,67 +262,108 @@ export function WorkspacePage() {
     }
   }
 
+  const handleExport = async () => {
+    setExporting(true)
+    setError(null)
+    try {
+      await updateTestCases(projectId, conversationId, result)
+      const blob = await exportExcel(projectId, conversationId)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'testcases.xlsx'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '匯出失敗')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const hasResult = result.test_cases.length > 0 || result.clarification_questions.length > 0
 
+  if (!loaded) return <p className="subtitle">載入中…</p>
+
+  if (!hasResult) {
+    return (
+      <div className="panel">
+        <div className="workspace-title-row">
+          <input
+            className="workspace-title-input"
+            value={conversationName}
+            onChange={(e) => setConversationName(e.target.value)}
+            onBlur={(e) => commitRename(e.target.value)}
+          />
+        </div>
+        <h2>選擇要使用的素材</h2>
+        <p className="subtitle">
+          這個對話會把勾選的素材送給模型參考——專案裡新增的素材不會自動加進來，避免每次都把不相關的東西一起送給模型。
+        </p>
+        <MaterialSelector
+          materials={materials}
+          selectedIds={selectedMaterialIds}
+          busy={busy}
+          onChange={handleSelectedMaterialsChange}
+          onUpdateMaterial={handleUpdateMaterial}
+          onAddFiles={handleAddFilesToSelector}
+          onAddText={handleAddTextToSelector}
+        />
+        <div className="toolbar">
+          <span className="subtitle">已選擇 {selectedMaterialIds.length} 項素材</span>
+          <button disabled={busy || selectedMaterialIds.length === 0} onClick={handleGenerate}>
+            {busy ? '產生中…' : '開始產生測試用例'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className={hasResult ? 'app-shell app-shell-wide' : 'app-shell'}>
-      <div className="app-header">
-        <div className="app-header-row">
-          <h1>{conversationName || '對話'}</h1>
-          <button className="secondary" onClick={() => navigate(`/projects/${projectId}`)}>
-            ← 回專案
+    <div className="workspace-view">
+      <div className="workspace-title-row">
+        <input
+          className="workspace-title-input"
+          value={conversationName}
+          onChange={(e) => setConversationName(e.target.value)}
+          onBlur={(e) => commitRename(e.target.value)}
+        />
+        <span className="subtitle workspace-count">共 {result.test_cases.length} 筆用例</span>
+        <div className="workspace-actions">
+          <button className="secondary" onClick={() => setShowMaterials(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1c2733" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+            使用中的素材（{selectedMaterialIds.length}）
+          </button>
+          <button
+            className="workspace-export-button"
+            disabled={exporting || result.test_cases.length === 0}
+            onClick={handleExport}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
+              <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" />
+            </svg>
+            {exporting ? '匯出中…' : '匯出 Excel'}
           </button>
         </div>
       </div>
 
-      {error && <div className="error-banner">{error}</div>}
+      <div className="workspace-cases-scroll">
+        <TestCaseTable
+          testCases={result.test_cases}
+          onChange={(testCases) => setResult({ ...result, test_cases: testCases })}
+          highlightedKeys={highlightedKeys}
+          previousValues={previousValues}
+          onFieldFocus={clearHighlight}
+        />
+      </div>
 
-      {!loaded && <p className="subtitle">載入中…</p>}
-
-      {loaded && !hasResult && (
-        <div className="panel">
-          <h2>選擇要使用的素材</h2>
-          <p className="subtitle">
-            這個對話會把勾選的素材送給模型參考——專案裡新增的素材不會自動加進來，避免每次都把不相關的東西一起送給模型。
-          </p>
-          <MaterialSelector
-            materials={materials}
-            selectedIds={selectedMaterialIds}
-            busy={busy}
-            onChange={handleSelectedMaterialsChange}
-            onUpdateMaterial={handleUpdateMaterial}
-            onAddFiles={handleAddFilesToSelector}
-            onAddText={handleAddTextToSelector}
-          />
-          <div className="toolbar">
-            <span className="subtitle">已選擇 {selectedMaterialIds.length} 項素材</span>
-            <button disabled={busy || selectedMaterialIds.length === 0} onClick={handleGenerate}>
-              {busy ? '產生中…' : '開始產生測試用例'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {loaded && hasResult && (
-        <div className="workspace-layout">
-          <div className="workspace-chat-col">
-            <button className="secondary materials-toggle" onClick={() => setShowMaterials(true)}>
-              📎 查看使用中的素材（{selectedMaterialIds.length}）
-            </button>
-            <ChatPanel log={chatLog} busy={busy} onSend={handleSendMessage} />
-          </div>
-          <div className="workspace-table-col">
-            <TestCaseTable
-              testCases={result.test_cases}
-              onChange={(testCases) => setResult({ ...result, test_cases: testCases })}
-              highlightedKeys={highlightedKeys}
-              previousValues={previousValues}
-              onFieldFocus={clearHighlight}
-            />
-            <ExportButton projectId={projectId} conversationId={conversationId} result={result} onError={setError} />
-          </div>
-        </div>
-      )}
+      <FloatingChat log={chatLog} busy={busy} onSend={handleSendMessage} />
 
       {showMaterials && (
         <MaterialsModal
