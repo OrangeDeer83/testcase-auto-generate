@@ -1064,6 +1064,7 @@ button {
   padding: 9px 18px;
   font-size: 0.85rem;
   font-weight: 600;
+  white-space: nowrap;
   background: var(--color-primary);
   color: #fff;
   box-shadow: var(--shadow-sm);
@@ -1483,6 +1484,7 @@ table.testcase-table th {
 
 table.testcase-table td.step-number-cell {
   text-align: center;
+  white-space: nowrap;
   vertical-align: middle;
   cursor: grab;
   user-select: none;
@@ -1494,12 +1496,17 @@ table.testcase-table td.step-number-cell:active {
   cursor: grabbing;
 }
 
+.step-number-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
 .step-drag-grip {
-  display: block;
-  font-size: 0.7rem;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
   color: var(--color-text-faint);
-  margin-bottom: 2px;
 }
 
 table.testcase-table tr.step-dragging {
