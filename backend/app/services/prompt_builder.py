@@ -101,6 +101,8 @@ def build_material_content(materials: list[ParsedMaterial]) -> list[dict]:
             header += f"\n使用者說明：{material.description}"
         if material.kind == "text":
             content.append({"type": "text", "text": f"{header}\n{material.text}"})
+            for image_url in material.embedded_images:
+                content.append({"type": "image_url", "image_url": {"url": image_url}})
         else:
             content.append({"type": "text", "text": header})
             content.append({"type": "image_url", "image_url": {"url": material.image_data_url}})

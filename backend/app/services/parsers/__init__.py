@@ -6,7 +6,7 @@ from app.services.parsers.docx_parser import extract_docx_text
 from app.services.parsers.excel_parser import extract_excel_text
 from app.services.parsers.image_parser import to_image_data_url
 from app.services.parsers.markdown_parser import extract_markdown_text
-from app.services.parsers.pdf_parser import extract_pdf_text
+from app.services.parsers.pdf_parser import extract_pdf_images, extract_pdf_text
 
 SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 
@@ -19,7 +19,16 @@ def parse_upload(filename: str, content: bytes) -> ParsedMaterial:
     ext = Path(filename).suffix.lower()
 
     if ext == ".pdf":
-        return ParsedMaterial(filename=filename, kind="text", text=extract_pdf_text(content))
+        embedded_images = [
+            to_image_data_url(image_bytes, f"image/{'jpeg' if image_ext == 'jpg' else image_ext}")
+            for image_bytes, image_ext in extract_pdf_images(content)
+        ]
+        return ParsedMaterial(
+            filename=filename,
+            kind="text",
+            text=extract_pdf_text(content),
+            embedded_images=embedded_images,
+        )
     if ext == ".docx":
         return ParsedMaterial(filename=filename, kind="text", text=extract_docx_text(content))
     if ext == ".xlsx":

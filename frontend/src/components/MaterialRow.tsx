@@ -27,7 +27,7 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
   const [nameBase, setNameBase] = useState(initialBase)
   const [description, setDescription] = useState(material.description)
   const [content, setContent] = useState(material.text ?? '')
-  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null)
 
   // 改名如果因為名稱重複被後端拒絕，material.filename 不會變，這裡要跟著回復顯示，
   // 不能讓輸入框停在使用者剛剛打的（其實沒存成功的）名稱上。
@@ -68,7 +68,7 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
             className="material-thumbnail"
             src={material.image_data_url}
             alt={material.filename}
-            onClick={() => setPreviewOpen(true)}
+            onClick={() => setPreviewSrc(material.image_data_url ?? null)}
           />
         ) : (
           <span className="material-icon">{isText ? '📄' : '🖼️'}</span>
@@ -118,16 +118,33 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
           onBlur={saveDescription}
         />
       )}
-      {previewOpen && material.image_data_url && (
-        <div className="modal-overlay" onClick={() => setPreviewOpen(false)}>
+      {!!material.embedded_images?.length && (
+        <div className="material-embedded-images">
+          <p className="material-embedded-images-label">
+            文件內夾帶的圖片（共 {material.embedded_images.length} 張，點擊可放大）：
+          </p>
+          <div className="material-embedded-images-grid">
+            {material.embedded_images.map((src, index) => (
+              <img
+                key={index}
+                src={src}
+                alt={`${material.filename} 內嵌圖片 ${index + 1}`}
+                onClick={() => setPreviewSrc(src)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {previewSrc && (
+        <div className="modal-overlay" onClick={() => setPreviewSrc(null)}>
           <div className="modal-panel material-thumbnail-preview" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{material.filename}</h2>
-              <button className="secondary" onClick={() => setPreviewOpen(false)}>
+              <button className="secondary" onClick={() => setPreviewSrc(null)}>
                 關閉
               </button>
             </div>
-            <img src={material.image_data_url} alt={material.filename} />
+            <img src={previewSrc} alt={material.filename} />
           </div>
         </div>
       )}
