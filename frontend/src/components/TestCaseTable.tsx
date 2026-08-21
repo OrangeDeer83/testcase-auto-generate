@@ -169,13 +169,14 @@ export function TestCaseTable({
           key={caseIndex}
         >
           <span className="case-number">{caseIndex + 1}</span>
-          <div className="case-card-header">
+          <div className="case-card-header" onClick={() => toggleExpanded(caseIndex)}>
             {expanded ? (
               <input
                 className="name-input"
                 value={testCase.name}
                 onChange={(e) => updateCase(caseIndex, { name: e.target.value })}
                 onFocus={focusClears([`case:${caseIndex}`])}
+                onClick={(e) => e.stopPropagation()}
                 placeholder="用例名稱"
               />
             ) : (
@@ -191,7 +192,10 @@ export function TestCaseTable({
               type="button"
               className="case-expand-toggle"
               title={expanded ? '收合' : '展開'}
-              onClick={() => toggleExpanded(caseIndex)}
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleExpanded(caseIndex)
+              }}
             >
               <svg
                 width="16"

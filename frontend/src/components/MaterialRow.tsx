@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UploadedMaterial } from '../types'
+import { ModalOverlay } from './ModalOverlay'
 
 interface MaterialRowProps {
   material: UploadedMaterial
@@ -136,17 +137,15 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
         </div>
       )}
       {previewSrc && (
-        <div className="modal-overlay" onClick={() => setPreviewSrc(null)}>
-          <div className="modal-panel material-thumbnail-preview" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{material.filename}</h2>
-              <button className="secondary" onClick={() => setPreviewSrc(null)}>
-                關閉
-              </button>
-            </div>
-            <img src={previewSrc} alt={material.filename} />
+        <ModalOverlay onClose={() => setPreviewSrc(null)} panelClassName="material-thumbnail-preview">
+          <div className="modal-header">
+            <h2>{material.filename}</h2>
+            <button className="secondary" onClick={() => setPreviewSrc(null)}>
+              關閉
+            </button>
           </div>
-        </div>
+          <img src={previewSrc} alt={material.filename} />
+        </ModalOverlay>
       )}
     </li>
   )

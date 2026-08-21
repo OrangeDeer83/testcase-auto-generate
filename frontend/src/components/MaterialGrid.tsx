@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent, MouseEvent } from 'react'
 import type { UploadedMaterial } from '../types'
 import { MaterialRow } from './MaterialRow'
+import { ModalOverlay } from './ModalOverlay'
 
 interface MaterialGridProps {
   materials: UploadedMaterial[]
@@ -36,6 +37,17 @@ export function MaterialGrid({
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       setEditingMaterialId(materialId)
+    }
+  }
+
+  const handleDeleteClick = (e: MouseEvent<HTMLButtonElement>, material: UploadedMaterial) => {
+    e.stopPropagation()
+    if (
+      window.confirm(
+        `確定要刪除素材「${material.filename}」嗎？如果已經在某些對話裡用過，那些對話紀錄裡的圖片／內容會變成找不到，且無法復原。`,
+      )
+    ) {
+      onRemoveMaterial?.(material.id)
     }
   }
 
@@ -78,6 +90,18 @@ export function MaterialGrid({
               <span className="material-card-name" title={material.filename}>
                 {material.filename}
               </span>
+              {onRemoveMaterial && (
+                <button
+                  type="button"
+                  className="material-card-delete"
+                  title="刪除素材"
+                  onClick={(e) => handleDeleteClick(e, material)}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6" />
+                  </svg>
+                </button>
+              )}
             </div>
           )
         })}
@@ -92,31 +116,29 @@ export function MaterialGrid({
       </div>
 
       {editingMaterial && (
-        <div className="modal-overlay" onClick={() => setEditingMaterialId(null)}>
-          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>編輯素材</h2>
-              <button className="secondary" onClick={() => setEditingMaterialId(null)}>
-                關閉
-              </button>
-            </div>
-            <ul className="material-list">
-              <MaterialRow
-                material={editingMaterial}
-                busy={busy}
-                onRemove={
-                  onRemoveMaterial
-                    ? (id) => {
-                        onRemoveMaterial(id)
-                        setEditingMaterialId(null)
-                      }
-                    : undefined
-                }
-                onUpdate={onUpdateMaterial}
-              />
-            </ul>
+        <ModalOverlay onClose={() => setEditingMaterialId(null)}>
+          <div className="modal-header">
+            <h2>編輯素材</h2>
+            <button className="secondary" onClick={() => setEditingMaterialId(null)}>
+              關閉
+            </button>
           </div>
-        </div>
+          <ul className="material-list">
+            <MaterialRow
+              material={editingMaterial}
+              busy={busy}
+              onRemove={
+                onRemoveMaterial
+                  ? (id) => {
+                      onRemoveMaterial(id)
+                      setEditingMaterialId(null)
+                    }
+                  : undefined
+              }
+              onUpdate={onUpdateMaterial}
+            />
+          </ul>
+        </ModalOverlay>
       )}
     </>
   )
