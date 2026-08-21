@@ -1483,10 +1483,7 @@ table.testcase-table th {
 }
 
 table.testcase-table td.step-number-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
+  text-align: center;
   white-space: nowrap;
   vertical-align: middle;
   cursor: grab;
@@ -1497,6 +1494,13 @@ table.testcase-table td.step-number-cell {
 
 table.testcase-table td.step-number-cell:active {
   cursor: grabbing;
+}
+
+.step-number-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .step-drag-grip {
