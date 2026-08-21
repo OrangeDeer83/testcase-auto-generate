@@ -4,17 +4,17 @@
 
 ## 2026-08-21 測試步驟拖曳握把與刪除按鈕排版修正
 
-### 1. 拖曳握把（⠿）跟步驟編號被擠成上下兩行
+### 1. 拖曳握把跟步驟編號被擠成上下兩行，Unicode 字元本身還會歪掉
 
-**問題**：測試步驟表格第一欄（多步驟時才會顯示的拖曳握把＋步驟編號），原本會顯示成握把在上、編號在下的兩行，而不是握把在編號前面、同一行水平排列。
+**問題**：測試步驟表格第一欄（多步驟時才會顯示的拖曳握把＋步驟編號），原本會顯示成握把在上、編號在下的兩行，而不是握把在編號前面、同一行水平排列。第一輪修完排版問題後，使用者截圖回報握把圖示本身「是歪的」——因為原本的握把是直接寫死的 Unicode 字元 `⠿`（Braille 六點圖案），這個字元的實際外觀完全交給瀏覽器目前用的字型去決定，不同字型畫出來的六個點不見得排成工整的方格，在這台機器上就呈現出歪斜、不對稱的樣子。
 
-**修法**：根因是 `.step-drag-grip` 這個 CSS class 寫死了 `display: block`，`display: block` 的元素預設一定會自己獨佔一行、把後面的內容往下推——握把後面緊接著的步驟編號文字，因此被迫換到第二行。改成 `display: inline-flex`（跟文字同一行排列），同時把外層 `td.step-number-cell` 改成 `display: flex; align-items: center; justify-content: center; gap: 4px`，讓握把跟編號在同一個 flex row 裡水平排列、置中對齊、中間留一點間距。
+**修法**：排版問題的根因是 `.step-drag-grip` 這個 CSS class 寫死了 `display: block`，會強制自己獨佔一行、把後面緊接著的步驟編號文字往下推。改成 `display: inline-flex`（跟文字同一行排列），外層 `td.step-number-cell` 也改成 `display: flex; align-items: center; justify-content: center; gap: 4px`，讓握把跟編號同一個 flex row 裡水平排列。字元歪斜的問題則是換掉整個實作方式：不再依賴 Unicode 字元交給字型渲染，改成手畫一顆行內 SVG，用 6 個 `<circle>` 精確指定座標排成 2 欄 3 列的方格——SVG 是向量圖形，座標寫死多少就是多少，不會因為字型、作業系統、瀏覽器不同而跑位或變形。
 
-**背後的通用觀念**：CSS 的 `display` 屬性決定一個元素「怎麼跟旁邊的內容排隊」。`block` 元素的預設行為就是像段落一樣自己另起一行（前後都會換行），`inline`／`inline-flex`／`inline-block` 才會跟其他內容排在同一行。**只要看到「兩個本來想並排的東西卻上下疊在一起」，第一個該檢查的嫌疑犯就是其中一個元素是不是被設成（或預設就是）`display: block`**。這次剛好是很典型的案例：`span`（如 `.step-drag-grip`）預設是 inline，但這裡被人為覆寫成 block，才造成問題。
+**背後的通用觀念**：這裡疊了兩層不同性質的問題。排版層面：CSS 的 `display` 屬性決定一個元素「怎麼跟旁邊的內容排隊」，`block` 元素預設一定像段落一樣自己另起一行，看到「兩個本來想並排的東西卻上下疊在一起」，第一個該檢查的嫌疑犯就是其中一個元素是不是被設成 `display: block`。渲染層面則是更根本的教訓：**任何「拿一個 Unicode 符號／emoji 字元當圖示用」的做法，外觀都不是你自己決定的，是使用者當下的作業系統／瀏覽器／已安裝字型決定的**——同一個字元在不同機器上可能長得完全不一樣（粗細、間距、甚至有沒有對齊），這也是這個專案的刪除圖示（`MaterialGrid.tsx` 的垃圾桶按鈕）一開始就選擇手畫 SVG、而不是隨便找一個 🗑️ emoji 的原因。只要圖示的「長相是否精確」對使用者體驗有影響（不是純裝飾），就該用 SVG 精確畫出來，不要賭 Unicode 字元在對方機器上長得夠好看。
 
-**檔案**：`frontend/src/index.css`（`.step-drag-grip` 的 `display` 由 `block` 改成 `inline-flex`；`td.step-number-cell` 加上 `display: flex` 等排版屬性）
+**檔案**：`frontend/src/index.css`（`.step-drag-grip` 的 `display` 由 `block` 改成 `inline-flex`；`td.step-number-cell` 加上 `display: flex` 等排版屬性）、`frontend/src/components/TestCaseTable.tsx`（握把內容從 `⠿` 字元改成 6 個 `<circle>` 組成的行內 SVG）
 
-**驗證方式**：瀏覽器裡用 JS 量測實際渲染出來的 DOM 座標，確認握把的 `right` 邊界小於等於編號文字的 `left` 邊界（`gripLeftOfNumber: true`），且儲存格高度回到單行高度（約 35–36px，原本疊兩行時會明顯更高）。
+**驗證方式**：瀏覽器裡用 JS 量測實際渲染出來的 DOM 座標——排版部分確認握把的 `right` 邊界小於等於編號文字的 `left` 邊界（`gripLeftOfNumber: true`）、儲存格高度回到單行高度；SVG 部分量測 6 個 `<circle>` 的實際渲染座標，確認只有 2 個不重複的 x 值、3 個不重複的 y 值（`isCleanGrid: true`），也就是真的排成工整對稱的 2×3 方格，不會因字型不同而跑位。
 
 ### 2. 刪除按鈕文字「刪除」被壓成直排
 
