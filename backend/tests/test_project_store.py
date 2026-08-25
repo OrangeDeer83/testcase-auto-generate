@@ -292,10 +292,50 @@ def test_ungroup_image_extracts_into_new_standalone_material() -> None:
     assert extracted.kind == "image"
     assert extracted.image_data_url == "data:AFTER"
     assert extracted.id != grouped.id
+    assert extracted.filename == "開關前.png（拆出的圖片）"
 
     # 拆出來的那張圖要真的變成素材庫裡一筆獨立、找得到的素材。
     materials = project_store.list_materials(project.id)
     assert {m.id for m in materials} == {grouped.id, extracted.id}
+
+
+def test_ungroup_image_does_not_stack_suffix_on_repeated_cycles() -> None:
+    """反覆「拆出→合併回去→再拆出」不該讓檔名尾綴無限疊加成
+    「（拆出的圖片）（拆出的圖片）……」——這是實際被使用者操作重現出來的 bug。"""
+    project = project_store.create_project("專案")
+    # 模擬素材已經是「上一輪拆出→又被合併回去當主體」的結果，檔名已經帶著一次
+    # 尾綴，這次又要再拆出一次；另外留一筆不相干的素材在專案裡，確保等一下的
+    # 斷言不是因為「專案裡只有這一筆」才巧合通過。
+    project_store.add_material(
+        project.id, ParsedMaterial(filename="不相干.png", kind="image", image_data_url="data:X")
+    )
+    already_extracted_once = project_store.add_material(
+        project.id,
+        ParsedMaterial(
+            filename="a.png（拆出的圖片）",
+            kind="image",
+            image_data_url="data:A",
+            embedded_images=["data:B", "data:C"],
+        ),
+    )
+    assert already_extracted_once is not None
+
+    # 連續拆兩次，模擬使用者反覆操作——如果尾綴會疊加，第二次拆出來的檔名
+    # 就會變成「a.png（拆出的圖片）（拆出的圖片）」。
+    result1 = project_store.ungroup_image(project.id, already_extracted_once.id, 0)
+    assert result1 is not None
+    updated1, extracted1 = result1
+    assert "（拆出的圖片）（拆出的圖片）" not in extracted1.filename
+
+    result2 = project_store.ungroup_image(project.id, updated1.id, 0)
+    assert result2 is not None
+    _, extracted2 = result2
+    assert "（拆出的圖片）（拆出的圖片）" not in extracted2.filename
+    # 兩次拆出來的檔名各自只帶一份尾綴（後面可能因為撞名多一個 (2) 之類的編號，
+    # 但尾綴本身不能疊加），且彼此不相同（各自是獨立素材，不是同一筆）。
+    assert extracted1.filename.count("（拆出的圖片）") == 1
+    assert extracted2.filename.count("（拆出的圖片）") == 1
+    assert extracted1.id != extracted2.id
 
 
 def test_ungroup_image_returns_none_when_index_out_of_range() -> None:

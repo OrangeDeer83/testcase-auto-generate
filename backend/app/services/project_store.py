@@ -1,9 +1,19 @@
+import re
 import shutil
 import time
 
 from app.models.material import ParsedMaterial
 from app.models.project import Project, ProjectSummary
 from app.services import data_paths as paths
+
+_UNGROUP_SUFFIX = "（拆出的圖片）"
+_UNGROUP_SUFFIX_PATTERN = re.compile(rf"(?:{re.escape(_UNGROUP_SUFFIX)})+$")
+
+
+def _strip_ungroup_suffix(filename: str) -> str:
+    """反覆「拆出→合併→再拆出」時，被拆出的素材可能已經帶著這個尾綴（一次或多次）；
+    加尾綴前先剝乾淨，避免疊成「（拆出的圖片）（拆出的圖片）……」無限增生。"""
+    return _UNGROUP_SUFFIX_PATTERN.sub("", filename)
 
 
 def create_project(name: str) -> Project:
@@ -216,7 +226,9 @@ def ungroup_image(
         paths.atomic_write_json(paths.material_path(project_id, material.id), material)
 
         new_material = ParsedMaterial(
-            filename=make_unique_filename(project_id, f"{material.filename}（拆出的圖片）"),
+            filename=make_unique_filename(
+                project_id, f"{_strip_ungroup_suffix(material.filename)}{_UNGROUP_SUFFIX}"
+            ),
             kind="image",
             image_data_url=image_url,
         )
