@@ -4,6 +4,7 @@ import {
   addTextMaterial,
   deleteMaterial,
   mergeMaterials,
+  ungroupImage,
   updateMaterial,
   uploadMaterials,
 } from '../api'
@@ -37,6 +38,16 @@ export function MaterialLibraryView() {
       setError(err instanceof Error ? err.message : '合併素材失敗')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const handleUngroupImage = async (materialId: string, index: number) => {
+    setError(null)
+    try {
+      await ungroupImage(projectId, materialId, index)
+      await refreshShell()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '拆出圖片失敗')
     }
   }
 
@@ -90,6 +101,7 @@ export function MaterialLibraryView() {
       onRemoveMaterial={handleRemoveMaterial}
       onUpdateMaterial={handleUpdateMaterial}
       onMergeMaterials={handleMergeMaterials}
+      onUngroupImage={handleUngroupImage}
     />
   )
 }

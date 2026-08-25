@@ -101,6 +101,17 @@ def build_material_content(materials: list[ParsedMaterial]) -> list[dict]:
             header += f"\n使用者說明：{material.description}"
         if material.kind == "text":
             content.append({"type": "text", "text": f"{header}\n{material.text}"})
+            if material.embedded_images:
+                content.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            f"（以下 {len(material.embedded_images)} 張圖片跟這份素材是同一組，"
+                            "依序排列，可能是文件內夾帶的截圖，也可能是使用者額外標記為相關的"
+                            "畫面，請對照上面的文字內容一併理解）"
+                        ),
+                    }
+                )
         else:
             content.append({"type": "text", "text": header})
             content.append({"type": "image_url", "image_url": {"url": material.image_data_url}})
@@ -110,7 +121,7 @@ def build_material_content(materials: list[ParsedMaterial]) -> list[dict]:
                         "type": "text",
                         "text": (
                             f"（以下 {len(material.embedded_images)} 張圖片跟上面這張同屬一組，"
-                            "依上傳順序排列，通常代表同一畫面在不同狀態或操作前後的對照，"
+                            "依序排列，通常代表同一畫面在不同狀態或操作前後的對照，"
                             "請對照理解，不要當成互不相關的獨立畫面）"
                         ),
                     }

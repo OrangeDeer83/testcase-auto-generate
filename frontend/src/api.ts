@@ -197,6 +197,24 @@ export async function mergeMaterials(
   return handleResponse(response)
 }
 
+/** 把某筆素材 embedded_images 裡第 index 張圖片拆出來，變成一筆獨立的新素材——
+ * 取消合併裡的其中一張，不用整組拆散重來。 */
+export async function ungroupImage(
+  projectId: string,
+  materialId: string,
+  index: number,
+): Promise<{ updated: UploadedMaterial; extracted: UploadedMaterial }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/materials/${materialId}/ungroup`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index }),
+    },
+  )
+  return handleResponse(response)
+}
+
 export async function getMaterials(projectId: string): Promise<UploadedMaterial[]> {
   const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/materials`)
   return handleResponse(response)

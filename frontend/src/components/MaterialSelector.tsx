@@ -20,6 +20,7 @@ interface MaterialSelectorProps {
   onAddText: (label: string, content: string) => void
   onRemoveMaterial: (id: string) => void
   onMergeMaterials: (ids: string[]) => Promise<void>
+  onUngroupImage: (materialId: string, index: number) => void
 }
 
 export function MaterialSelector({
@@ -32,6 +33,7 @@ export function MaterialSelector({
   onAddText,
   onRemoveMaterial,
   onMergeMaterials,
+  onUngroupImage,
 }: MaterialSelectorProps) {
   const selectedSet = new Set(selectedIds)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -117,6 +119,7 @@ export function MaterialSelector({
               onUpdateMaterial={onUpdateMaterial}
               onRemoveMaterial={onRemoveMaterial}
               onMergeMaterials={onMergeMaterials}
+              onUngroupImage={onUngroupImage}
               selectedIds={selectedSet}
               onToggleSelect={toggle}
               onAddClick={focusUpload}

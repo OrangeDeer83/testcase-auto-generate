@@ -159,10 +159,13 @@ def update_material(
 
 
 def merge_materials(project_id: str, material_ids: list[str]) -> ParsedMaterial | None:
-    """把 material_ids 依序合併成一筆：第一筆當主圖（filename/description/image_data_url
-    都維持第一筆的），其餘依序放進主圖的 embedded_images，其餘素材本身接著被刪除（沿用
-    delete_material，連帶清掉各對話裡對它們的勾選狀態）。任何一筆不存在、或不是圖片素材，
-    整個合併都不執行，回傳 None。"""
+    """把 material_ids 依序合併成一筆：第一筆當主體（filename/description/text／
+    image_data_url 都維持第一筆的，可以是文字／PDF 素材，也可以是圖片素材），其餘
+    依序放進主體的 embedded_images，其餘素材本身接著被刪除（沿用 delete_material，
+    連帶清掉各對話裡對它們的勾選狀態）。只有「其餘」這幾筆必須是圖片素材——文字內容
+    沒辦法變成 embedded_images 裡的一張圖，所以只有第一筆（主體）可以是文字／PDF，
+    第二筆以後一律要是圖片。任何一筆不存在、或第二筆以後出現非圖片素材，整個合併都
+    不執行，回傳 None。"""
     with paths.lock():
         project = get_project(project_id)
         if not project:
@@ -170,10 +173,10 @@ def merge_materials(project_id: str, material_ids: list[str]) -> ParsedMaterial 
         materials = [get_material(project_id, mid) for mid in material_ids]
         if any(m is None for m in materials):
             return None
-        if any(m.kind != "image" for m in materials):
-            return None
 
         primary, *rest = materials
+        if any(m.kind != "image" for m in rest):
+            return None
         merged_images = list(primary.embedded_images)
         for m in rest:
             if m.image_data_url:
@@ -187,6 +190,42 @@ def merge_materials(project_id: str, material_ids: list[str]) -> ParsedMaterial 
         delete_material(project_id, m.id)
 
     return primary
+
+
+def ungroup_image(
+    project_id: str, material_id: str, index: int
+) -> tuple[ParsedMaterial, ParsedMaterial] | None:
+    """把 material_id 這筆素材 embedded_images 陣列裡第 index 張圖片拆出來，變成一筆
+    獨立的新素材（回到跟合併之前一樣、各自獨立的狀態），原本那筆素材則移除這張圖片。
+    index 超出範圍或素材不存在都回傳 None、不做任何變動。回傳 (更新後的原素材, 新拆出
+    的素材)。"""
+    with paths.lock():
+        project = get_project(project_id)
+        if not project:
+            return None
+        material = get_material(project_id, material_id)
+        if not material:
+            return None
+        if index < 0 or index >= len(material.embedded_images):
+            return None
+
+        image_url = material.embedded_images[index]
+        material.embedded_images = [
+            url for i, url in enumerate(material.embedded_images) if i != index
+        ]
+        paths.atomic_write_json(paths.material_path(project_id, material.id), material)
+
+        new_material = ParsedMaterial(
+            filename=make_unique_filename(project_id, f"{material.filename}（拆出的圖片）"),
+            kind="image",
+            image_data_url=image_url,
+        )
+        paths.atomic_write_json(paths.material_path(project_id, new_material.id), new_material)
+        project.material_ids.append(new_material.id)
+        project.updated_at = time.time()
+        paths.atomic_write_json(paths.project_meta_path(project_id), project)
+
+    return material, new_material
 
 
 def delete_material(project_id: str, material_id: str) -> bool:

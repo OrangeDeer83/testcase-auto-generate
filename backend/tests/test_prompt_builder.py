@@ -31,8 +31,17 @@ def test_grouped_image_material_sends_all_images_with_hint() -> None:
     assert content[3] == {"type": "image_url", "image_url": {"url": "data:image/png;base64,AFTER"}}
 
 
-def test_text_material_embedded_images_still_sent_without_group_hint() -> None:
-    """PDF 內嵌圖片的既有行為要維持不變：不要因為新增的分組提示混進純文字素材。"""
+def test_text_material_without_embedded_images_has_no_group_hint() -> None:
+    material = ParsedMaterial(filename="spec.pdf", kind="text", text="需求內容")
+
+    content = build_material_content([material])
+
+    assert content == [{"type": "text", "text": "【檔案：spec.pdf】\n需求內容"}]
+
+
+def test_text_material_embedded_images_sent_with_group_hint() -> None:
+    """文字／PDF 素材合併了圖片素材進來（或 PDF 本身內嵌截圖）時，也要有分組提示——
+    不能只有圖片素材當主體時才提醒模型這些圖片彼此相關。"""
     material = ParsedMaterial(
         filename="spec.pdf",
         kind="text",
@@ -42,8 +51,8 @@ def test_text_material_embedded_images_still_sent_without_group_hint() -> None:
 
     content = build_material_content([material])
 
-    assert content == [
-        {"type": "text", "text": "【檔案：spec.pdf】\n需求內容"},
-        {"type": "image_url", "image_url": {"url": "data:image/png;base64,SHOT1"}},
-        {"type": "image_url", "image_url": {"url": "data:image/png;base64,SHOT2"}},
-    ]
+    assert content[0] == {"type": "text", "text": "【檔案：spec.pdf】\n需求內容"}
+    assert content[1]["type"] == "text"
+    assert "同一組" in content[1]["text"]
+    assert content[2] == {"type": "image_url", "image_url": {"url": "data:image/png;base64,SHOT1"}}
+    assert content[3] == {"type": "image_url", "image_url": {"url": "data:image/png;base64,SHOT2"}}

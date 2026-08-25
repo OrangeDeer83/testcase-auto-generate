@@ -13,9 +13,12 @@ interface MaterialGridProps {
   ) => Promise<boolean>
   /** 有給才會在編輯視窗裡顯示刪除鈕——對話素材選取畫面不給，避免誤刪整個專案共用的素材。 */
   onRemoveMaterial?: (id: string) => void
-  /** 有給才會顯示「合併素材成一組」功能——選取多筆既有的圖片素材，合併成一筆，
-   * 讓模型知道這幾張圖彼此相關（例如同一畫面「開關前／開關後」的對照截圖）。 */
+  /** 有給才會顯示「合併素材成一組」功能——選取多筆既有的素材，合併成一筆，
+   * 讓模型知道它們彼此相關（例如同一畫面「開關前／開關後」的對照截圖，或一份
+   * 需求文件搭配幾張相關截圖）。 */
   onMergeMaterials?: (ids: string[]) => Promise<void>
+  /** 有給才會在編輯視窗裡每張附加圖片上顯示「拆出」按鈕，把它拆回獨立的一筆素材。 */
+  onUngroupImage?: (materialId: string, index: number) => void
   /** 有給才會在卡片上顯示勾選框（對話素材選取畫面用來挑這次要送給模型的素材）。 */
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
@@ -30,6 +33,7 @@ export function MaterialGrid({
   onUpdateMaterial,
   onRemoveMaterial,
   onMergeMaterials,
+  onUngroupImage,
   selectedIds,
   onToggleSelect,
   onAddClick,
@@ -49,10 +53,14 @@ export function MaterialGrid({
     setMergeSelected([])
   }
 
+  // 第一個選的（主體）可以是任何種類的素材（文字／PDF／圖片）；選了第一個之後，
+  // 之後每一個都只能是圖片素材——文字內容沒辦法變成合併後的附加圖片。已經選過的
+  // 素材永遠可以再點一次取消選取，不受這條規則限制。
   const toggleMergeSelect = (material: UploadedMaterial) => {
-    if (material.kind !== 'image') return
+    const alreadyPicked = mergeSelected.includes(material.id)
+    if (!alreadyPicked && mergeSelected.length > 0 && material.kind !== 'image') return
     setMergeSelected((prev) =>
-      prev.includes(material.id) ? prev.filter((id) => id !== material.id) : [...prev, material.id],
+      alreadyPicked ? prev.filter((id) => id !== material.id) : [...prev, material.id],
     )
   }
 
@@ -102,8 +110,8 @@ export function MaterialGrid({
             <>
               <span className="material-merge-hint">
                 {mergeSelected.length === 0
-                  ? '點選要合併成一組的圖片（只能選圖片素材，第一張點的會是主圖，其餘依序附加）'
-                  : `已選 ${mergeSelected.length} 張，第 1 張點的是主圖`}
+                  ? '先點第一筆當主體（文字／PDF／圖片都可以），之後只能再點圖片素材依序附加上去'
+                  : `已選 ${mergeSelected.length} 筆，第 1 筆點的是主體`}
               </span>
               <button type="button" className="secondary" disabled={merging} onClick={exitMergeMode}>
                 取消
@@ -128,7 +136,8 @@ export function MaterialGrid({
         {materials.map((material) => {
           const selected = selectedIds?.has(material.id) ?? false
           const mergeIndex = mergeSelected.indexOf(material.id)
-          const mergeEligible = material.kind === 'image'
+          const mergeEligible =
+            mergeIndex >= 0 || mergeSelected.length === 0 || material.kind === 'image'
           return (
             <div
               key={material.id}
@@ -222,6 +231,7 @@ export function MaterialGrid({
                   : undefined
               }
               onUpdate={onUpdateMaterial}
+              onUngroupImage={onUngroupImage}
             />
           </ul>
         </ModalOverlay>

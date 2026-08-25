@@ -10,6 +10,7 @@ import {
   mergeMaterials,
   sendChatMessage,
   saveChatLog,
+  ungroupImage,
   updateConversation,
   updateMaterial,
   updateTestCases,
@@ -211,6 +212,16 @@ export function WorkspacePage() {
     }
   }
 
+  const handleUngroupImage = async (materialId: string, index: number) => {
+    setError(null)
+    try {
+      await ungroupImage(projectId, materialId, index)
+      await refreshShell()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '拆出圖片失敗')
+    }
+  }
+
   const handleAddFilesToSelector = async (files: File[]) => {
     setError(null)
     try {
@@ -373,6 +384,7 @@ export function WorkspacePage() {
           onAddText={handleAddTextToSelector}
           onRemoveMaterial={handleRemoveMaterial}
           onMergeMaterials={handleMergeMaterials}
+          onUngroupImage={handleUngroupImage}
         />
         <div className="toolbar">
           <span className="subtitle">已選擇 {selectedMaterialIds.length} 項素材</span>

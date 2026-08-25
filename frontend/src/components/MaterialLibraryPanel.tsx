@@ -38,6 +38,7 @@ interface MaterialLibraryPanelProps {
     updates: { filename?: string; description?: string; text?: string },
   ) => Promise<boolean>
   onMergeMaterials: (ids: string[]) => Promise<void>
+  onUngroupImage: (materialId: string, index: number) => void
 }
 
 export function MaterialLibraryPanel({
@@ -48,6 +49,7 @@ export function MaterialLibraryPanel({
   onRemoveMaterial,
   onUpdateMaterial,
   onMergeMaterials,
+  onUngroupImage,
 }: MaterialLibraryPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [textFields, setTextFields] = useState<TextField[]>(() => [
@@ -192,6 +194,7 @@ export function MaterialLibraryPanel({
               onUpdateMaterial={onUpdateMaterial}
               onRemoveMaterial={onRemoveMaterial}
               onMergeMaterials={onMergeMaterials}
+              onUngroupImage={onUngroupImage}
               onAddClick={focusUpload}
             />
           )}

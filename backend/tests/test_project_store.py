@@ -218,7 +218,34 @@ def test_merge_materials_preserves_existing_embedded_images_from_both_sides() ->
     assert merged.embedded_images == ["data:A2", "data:B1", "data:B2"]
 
 
-def test_merge_materials_returns_none_when_kind_is_not_image() -> None:
+def test_merge_materials_allows_text_material_as_primary() -> None:
+    """第一筆選的（主體）可以是文字／PDF 素材，圖片依序變成它的 embedded_images。"""
+    project = project_store.create_project("專案")
+    spec = project_store.add_material(
+        project.id, ParsedMaterial(filename="需求.pdf", kind="text", text="開關功能說明")
+    )
+    before = project_store.add_material(
+        project.id, ParsedMaterial(filename="開關前.png", kind="image", image_data_url="data:BEFORE")
+    )
+    after = project_store.add_material(
+        project.id, ParsedMaterial(filename="開關後.png", kind="image", image_data_url="data:AFTER")
+    )
+    assert spec is not None and before is not None and after is not None
+
+    merged = project_store.merge_materials(project.id, [spec.id, before.id, after.id])
+
+    assert merged is not None
+    assert merged.id == spec.id
+    assert merged.kind == "text"
+    assert merged.text == "開關功能說明"
+    assert merged.embedded_images == ["data:BEFORE", "data:AFTER"]
+    assert project_store.get_material(project.id, before.id) is None
+    assert project_store.get_material(project.id, after.id) is None
+
+
+def test_merge_materials_returns_none_when_non_first_item_is_not_image() -> None:
+    """文字／PDF 素材只能當第一筆（主體），排在第二筆以後一律不行——文字內容沒辦法
+    變成 embedded_images 裡的一張圖。"""
     project = project_store.create_project("專案")
     image = project_store.add_material(
         project.id, ParsedMaterial(filename="a.png", kind="image", image_data_url="data:A")
@@ -241,3 +268,52 @@ def test_merge_materials_returns_none_when_material_missing() -> None:
     assert image is not None
 
     assert project_store.merge_materials(project.id, [image.id, "does-not-exist"]) is None
+
+
+def test_ungroup_image_extracts_into_new_standalone_material() -> None:
+    project = project_store.create_project("專案")
+    grouped = project_store.add_material(
+        project.id,
+        ParsedMaterial(
+            filename="開關前.png",
+            kind="image",
+            image_data_url="data:BEFORE",
+            embedded_images=["data:AFTER"],
+        ),
+    )
+    assert grouped is not None
+
+    result = project_store.ungroup_image(project.id, grouped.id, 0)
+
+    assert result is not None
+    updated, extracted = result
+    assert updated.id == grouped.id
+    assert updated.embedded_images == []
+    assert extracted.kind == "image"
+    assert extracted.image_data_url == "data:AFTER"
+    assert extracted.id != grouped.id
+
+    # 拆出來的那張圖要真的變成素材庫裡一筆獨立、找得到的素材。
+    materials = project_store.list_materials(project.id)
+    assert {m.id for m in materials} == {grouped.id, extracted.id}
+
+
+def test_ungroup_image_returns_none_when_index_out_of_range() -> None:
+    project = project_store.create_project("專案")
+    grouped = project_store.add_material(
+        project.id,
+        ParsedMaterial(filename="a.png", kind="image", image_data_url="data:A", embedded_images=["data:B"]),
+    )
+    assert grouped is not None
+
+    assert project_store.ungroup_image(project.id, grouped.id, 1) is None
+    assert project_store.ungroup_image(project.id, grouped.id, -1) is None
+    # 失敗不該有副作用——原本那筆素材的 embedded_images 要維持不變。
+    refreshed = project_store.get_material(project.id, grouped.id)
+    assert refreshed is not None
+    assert refreshed.embedded_images == ["data:B"]
+
+
+def test_ungroup_image_returns_none_when_material_missing() -> None:
+    project = project_store.create_project("專案")
+    assert project_store.ungroup_image(project.id, "does-not-exist", 0) is None
