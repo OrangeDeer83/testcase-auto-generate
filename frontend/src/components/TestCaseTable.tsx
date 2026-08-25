@@ -15,6 +15,9 @@ interface TestCaseTableProps {
   onFieldFocus?: (keys: string[]) => void
   /** 有給值時，展開該筆用例並捲動過去——用於匯出被鎖定檢查擋下時，跳到第一筆未鎖定的用例。 */
   focusCaseIndex?: number | null
+  /** 每次要求跳轉時遞增——避免連續兩次擋下、剛好是同一個 index 時，因為值沒變化
+   * 而不會重新觸發 useEffect，導致捲動/展開看起來像「只生效一次」。 */
+  focusToken?: number
   /** 「圖N」編號 → 實際素材縮圖網址的反查表，用來畫每筆用例的「依據圖片」。 */
   imageMap?: Map<number, ImageRef>
 }
@@ -80,6 +83,7 @@ export function TestCaseTable({
   previousValues,
   onFieldFocus,
   focusCaseIndex,
+  focusToken,
   imageMap,
 }: TestCaseTableProps) {
   const isHighlighted = (key: string) => highlightedKeys?.has(key) ?? false
@@ -129,7 +133,8 @@ export function TestCaseTable({
         block: 'center',
       })
     })
-  }, [focusCaseIndex])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusCaseIndex, focusToken])
 
   const toggleExpanded = (index: number) => {
     setExpandedIndices((prev) => {
@@ -218,16 +223,10 @@ export function TestCaseTable({
             ) : (
               <span className="case-name-display">{testCase.name || '（未命名用例）'}</span>
             )}
-            {!expanded && (
-              <>
-                <span className="case-priority-pill">{testCase.priority || '—'}</span>
-                <span className="case-step-count">{stepCount} 個步驟</span>
-              </>
-            )}
             <button
               type="button"
               className={`case-lock-toggle${locked ? ' case-lock-toggle-locked' : ''}`}
-              title={locked ? '解鎖，允許編輯' : '鎖定，標記為已審核'}
+              title={locked ? '已鎖定審核，點擊解鎖以編輯' : '鎖定，標記為已審核'}
               onClick={(e) => {
                 e.stopPropagation()
                 toggleLock(caseIndex)
@@ -256,6 +255,12 @@ export function TestCaseTable({
               )}
               {locked ? '已鎖定' : '鎖定'}
             </button>
+            {!expanded && (
+              <>
+                <span className="case-priority-pill">{testCase.priority || '—'}</span>
+                <span className="case-step-count">{stepCount} 個步驟</span>
+              </>
+            )}
             <button
               type="button"
               className="case-expand-toggle"

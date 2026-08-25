@@ -77,8 +77,22 @@ export function WorkspacePage() {
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
   const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
   const [showMaterials, setShowMaterials] = useState(false)
-  const [pendingLockFocusIndex, setPendingLockFocusIndex] = useState<number | null>(null)
+  // 匯出被「還有用例未鎖定」擋下時的提示狀態，跟通用的 error-banner 分開處理——
+  // 這個提示要能在使用者鎖定該筆用例後自動消失，不能像一般錯誤訊息那樣停在畫面上
+  // 不會自己消失。token 每次擋下都遞增：就算連續兩次擋下剛好指向同一筆（index 沒變），
+  // 也要能重新觸發 TestCaseTable 裡的捲動/展開，不能因為 index 值沒變就不生效。
+  const [lockBlockNotice, setLockBlockNotice] = useState<{ index: number; token: number } | null>(
+    null,
+  )
+  const lockBlockTokenRef = useRef(0)
   const [imageMap, setImageMap] = useState<Map<number, ImageRef>>(new Map())
+
+  useEffect(() => {
+    if (lockBlockNotice == null) return
+    if (result.test_cases[lockBlockNotice.index]?.locked || result.test_cases.every((tc) => tc.locked)) {
+      setLockBlockNotice(null)
+    }
+  }, [result, lockBlockNotice])
 
   useEffect(() => {
     if (!projectId || !conversationId) return
@@ -352,8 +366,8 @@ export function WorkspacePage() {
   const handleExport = async () => {
     const firstUnlockedIndex = result.test_cases.findIndex((tc) => !tc.locked)
     if (firstUnlockedIndex !== -1) {
-      setError('還有測試用例尚未鎖定審核，已為您跳到第一筆未鎖定的用例')
-      setPendingLockFocusIndex(firstUnlockedIndex)
+      lockBlockTokenRef.current += 1
+      setLockBlockNotice({ index: firstUnlockedIndex, token: lockBlockTokenRef.current })
       return
     }
 
@@ -454,6 +468,20 @@ export function WorkspacePage() {
         </div>
       </div>
 
+      {lockBlockNotice && (
+        <div className="lock-block-notice">
+          <span>還有測試用例尚未鎖定審核，已為您跳到第一筆未鎖定的用例——鎖定後這則提示會自動消失</span>
+          <button
+            type="button"
+            className="lock-block-notice-close"
+            title="關閉提示"
+            onClick={() => setLockBlockNotice(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="workspace-cases-scroll">
         <TestCaseTable
           testCases={result.test_cases}
@@ -461,7 +489,8 @@ export function WorkspacePage() {
           highlightedKeys={highlightedKeys}
           previousValues={previousValues}
           onFieldFocus={clearHighlight}
-          focusCaseIndex={pendingLockFocusIndex}
+          focusCaseIndex={lockBlockNotice?.index ?? null}
+          focusToken={lockBlockNotice?.token}
           imageMap={imageMap}
         />
       </div>
