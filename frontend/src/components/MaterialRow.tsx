@@ -69,18 +69,26 @@ export function MaterialRow({
   }
 
   const isText = material.kind === 'text'
+  const hasGroup = !!material.embedded_images?.length
+  // 有分組圖片時，主圖（圖片素材才有）跟附加圖片一起編號，主圖是圖1；純文字素材
+  // 沒有主圖，附加圖片直接從圖1開始——跟 prompt_builder.py 送給模型的編號規則一致，
+  // 畫面上的縮圖編號才能跟模型輸出裡提到的「圖N」對得起來。
+  const embeddedNumberOffset = isText ? 1 : 2
 
   return (
     <li className="material-item">
       <div className="material-item-row">
         {leadingControl}
         {!isText && material.image_data_url ? (
-          <img
-            className="material-thumbnail"
-            src={material.image_data_url}
-            alt={material.filename}
-            onClick={() => setPreviewSrc(material.image_data_url ?? null)}
-          />
+          <span className="material-thumbnail-wrap">
+            <img
+              className="material-thumbnail"
+              src={material.image_data_url}
+              alt={material.filename}
+              onClick={() => setPreviewSrc(material.image_data_url ?? null)}
+            />
+            {hasGroup && <span className="material-image-number">圖1</span>}
+          </span>
         ) : (
           <span className="material-icon">{isText ? '📄' : '🖼️'}</span>
         )}
@@ -137,6 +145,7 @@ export function MaterialRow({
           <div className="material-embedded-images-grid">
             {material.embedded_images.map((src, index) => (
               <div key={index} className="material-embedded-image-item">
+                <span className="material-image-number">圖{index + embeddedNumberOffset}</span>
                 <img
                   src={src}
                   alt={`${material.filename} 內嵌圖片 ${index + 1}`}

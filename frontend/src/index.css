@@ -794,6 +794,32 @@ h2 {
   cursor: pointer;
 }
 
+.material-thumbnail-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.material-image-number {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 1;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
 .material-thumbnail-preview img {
   max-width: 100%;
   border-radius: var(--radius-sm);
@@ -1952,6 +1978,10 @@ tr.cell-highlight td {
 .material-detail img {
   max-width: 100%;
   border-radius: var(--radius-sm);
+}
+
+.material-detail-image-wrap {
+  display: block;
 }
 
 .material-detail-text {
