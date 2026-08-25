@@ -12,6 +12,7 @@ from app.services.prompt_builder import (
     build_messages,
     parse_generation_result,
 )
+from app.services.test_case_lock import enforce_lock_on_llm_result, enforce_lock_on_manual_edit
 
 router = APIRouter(prefix="/api/projects/{project_id}/conversations", tags=["conversations"])
 
@@ -111,6 +112,8 @@ def generate(project_id: str, conversation_id: str):
         logger.error("POST /generate conversation=%s 解析失敗: %s", conversation_id, exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+    result = enforce_lock_on_llm_result(previous_cases, result)
     conversation.last_result = result
     conversation_store.save_conversation(project_id, conversation)
     logger.info(
@@ -170,6 +173,8 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
         logger.error("POST /chat conversation=%s 解析失敗: %s", conversation_id, exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+    result = enforce_lock_on_llm_result(previous_cases, result)
     conversation.last_result = result
     conversation.llm_history.append(
         ChatMessage(role="assistant", content=_summarize_for_history(result))
@@ -194,6 +199,8 @@ def _summarize_for_history(result: GenerationResult) -> str:
 def update_test_cases(project_id: str, conversation_id: str, payload: GenerationResult):
     _get_project_or_404(project_id)
     conversation = _get_conversation_or_404(project_id, conversation_id)
+    previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+    payload.test_cases = enforce_lock_on_manual_edit(previous_cases, payload.test_cases)
     conversation.last_result = payload
     conversation_store.save_conversation(project_id, conversation)
     return payload

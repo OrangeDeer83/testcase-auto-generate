@@ -86,9 +86,10 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
    - 沒有回答到的（例如使用者只回答了其中幾個問題、講了不相關的事、或訊息內容答非所問），這個問題必須**原封不動**保留在回傳的 clarification_questions 中再次提出，絕對不可以因為使用者這次沒提到就默默拿掉、當作已解決，也不可以自己編個答案來讓問題消失。
    - 只有當使用者對某個問題明確表示不需要處理時（例如「不管這個」「先跳過」「這個不重要」「不需要」「不用管」），才可以把那個問題從 clarification_questions 移除，並在對應的測試用例中維持原本已知的資訊，不要自行補上答案。
    - 使用者的訊息如果同時包含新的疑慮或指示，除了處理上述判斷之外，也要正常反映在 test_cases 或新的 clarification_questions 上。
-6. 所有文字使用繁體中文。
-7. 任何字串欄位的內容裡都絕對不可以出現半形雙引號 " ——包含舉例、引用畫面文字、陣列/程式碼片段等情況。需要引用或舉例時一律改用全形「」，例如要表達陣列 ["A", "A"] 時要寫成「A、A」或 (A, A)，不可以直接把 " 寫進字串內容，否則會破壞 JSON 格式。
-8. 只回傳 JSON 本身。
+6. 如果訊息中有列出「已鎖定審核」的用例名稱清單，這些用例已經過人工審核確認，絕對不可以修改它們的任何欄位、也不可以刪除或改名；使用者的指示如果會影響到它們，不要直接改，改成在 clarification_questions 提出問題向使用者確認要不要先解鎖。
+7. 所有文字使用繁體中文。
+8. 任何字串欄位的內容裡都絕對不可以出現半形雙引號 " ——包含舉例、引用畫面文字、陣列/程式碼片段等情況。需要引用或舉例時一律改用全形「」，例如要表達陣列 ["A", "A"] 時要寫成「A、A」或 (A, A)，不可以直接把 " 寫進字串內容，否則會破壞 JSON 格式。
+9. 只回傳 JSON 本身。
 """
 
 
@@ -167,6 +168,19 @@ def build_chat_messages(
         [tc.model_dump() for tc in current_test_cases], ensure_ascii=False
     )
     user_content.append({"type": "text", "text": f"目前的測試用例清單（JSON）：\n{test_cases_json}"})
+
+    locked_names = [tc.name for tc in current_test_cases if tc.locked]
+    if locked_names:
+        user_content.append(
+            {
+                "type": "text",
+                "text": (
+                    "以下用例已鎖定審核，絕對不可以修改或刪除，若使用者的指示會影響到它們，"
+                    "改成在 clarification_questions 提出問題確認：\n"
+                    + "\n".join(f"- {name}" for name in locked_names)
+                ),
+            }
+        )
 
     if pending_questions:
         questions_text = "\n".join(

@@ -70,7 +70,11 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
             className={`chat-entry entry-${entry.role}${entry.questions ? ' has-questions' : ''}`}
           >
             {entry.questions ? (
-              <div className="question-list">
+              <div
+                className={`question-list${
+                  idx === log.length - 1 && entry.role === 'assistant' ? ' question-list-blink' : ''
+                }`}
+              >
                 <div className="question-list-title">
                   {entry.questions.length > 1
                     ? `有 ${entry.questions.length} 個問題需要您協助確認：`

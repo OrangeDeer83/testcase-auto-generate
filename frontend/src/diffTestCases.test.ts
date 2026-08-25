@@ -5,6 +5,7 @@ import type { TestCase } from './types'
 
 function makeCase(overrides: Partial<TestCase> = {}): TestCase {
   return {
+    id: crypto.randomUUID(),
     name: '登入成功',
     module: '/登入功能',
     preconditions: '使用者已註冊帳號',
@@ -14,6 +15,8 @@ function makeCase(overrides: Partial<TestCase> = {}): TestCase {
     ],
     priority: 'P0',
     notes: '',
+    locked: false,
+    based_on_images: [],
     ...overrides,
   }
 }

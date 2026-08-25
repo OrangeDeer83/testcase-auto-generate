@@ -18,6 +18,13 @@ def export_excel(project_id: str, conversation_id: str):
     if not conversation.last_result or not conversation.last_result.test_cases:
         raise HTTPException(status_code=400, detail="尚無可匯出的測試用例")
 
+    unlocked = [tc for tc in conversation.last_result.test_cases if not tc.locked]
+    if unlocked:
+        raise HTTPException(
+            status_code=400,
+            detail=f"尚有 {len(unlocked)} 筆測試用例尚未鎖定審核，第一筆是「{unlocked[0].name}」",
+        )
+
     content = to_excel(conversation.last_result.test_cases)
     return Response(
         content=content,

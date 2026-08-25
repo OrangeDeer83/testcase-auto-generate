@@ -76,6 +76,7 @@ export function WorkspacePage() {
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
   const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
   const [showMaterials, setShowMaterials] = useState(false)
+  const [pendingLockFocusIndex, setPendingLockFocusIndex] = useState<number | null>(null)
 
   useEffect(() => {
     if (!projectId || !conversationId) return
@@ -335,9 +336,20 @@ export function WorkspacePage() {
   }
 
   const handleExport = async () => {
+    const firstUnlockedIndex = result.test_cases.findIndex((tc) => !tc.locked)
+    if (firstUnlockedIndex !== -1) {
+      setError('還有測試用例尚未鎖定審核，已為您跳到第一筆未鎖定的用例')
+      setPendingLockFocusIndex(firstUnlockedIndex)
+      return
+    }
+
     setExporting(true)
     setError(null)
     try {
+      const lastEntry = chatLog[chatLog.length - 1]
+      if (lastEntry?.role === 'assistant' && (lastEntry.questions?.length ?? 0) > 0) {
+        setError('⚠️ 目前有尚未回答的澄清問題，建議確認後再匯出（本次仍會照常匯出）')
+      }
       await updateTestCases(projectId, conversationId, result)
       const blob = await exportExcel(projectId, conversationId)
       const url = URL.createObjectURL(blob)
@@ -435,6 +447,7 @@ export function WorkspacePage() {
           highlightedKeys={highlightedKeys}
           previousValues={previousValues}
           onFieldFocus={clearHighlight}
+          focusCaseIndex={pendingLockFocusIndex}
         />
       </div>
 

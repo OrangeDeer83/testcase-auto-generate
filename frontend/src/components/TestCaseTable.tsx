@@ -12,6 +12,8 @@ interface TestCaseTableProps {
   highlightedKeys?: Set<string>
   previousValues?: Map<string, string>
   onFieldFocus?: (keys: string[]) => void
+  /** 有給值時，展開該筆用例並捲動過去——用於匯出被鎖定檢查擋下時，跳到第一筆未鎖定的用例。 */
+  focusCaseIndex?: number | null
 }
 
 interface AutoTextAreaProps {
@@ -19,12 +21,13 @@ interface AutoTextAreaProps {
   className?: string
   value: string
   placeholder?: string
+  disabled?: boolean
   onChange: (value: string) => void
   onFocus?: () => void
 }
 
 /** 高度自動貼合內容的 textarea，不提供手動拖拉調整大小的控制點。 */
-function AutoTextArea({ id, className, value, placeholder, onChange, onFocus }: AutoTextAreaProps) {
+function AutoTextArea({ id, className, value, placeholder, disabled, onChange, onFocus }: AutoTextAreaProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
 
   useLayoutEffect(() => {
@@ -42,6 +45,7 @@ function AutoTextArea({ id, className, value, placeholder, onChange, onFocus }: 
       className={`auto-textarea${className ? ` ${className}` : ''}`}
       value={value}
       placeholder={placeholder}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
       onFocus={onFocus}
     />
@@ -54,12 +58,15 @@ function emptyStep(stepNo: number): TestStep {
 
 function emptyCase(): TestCase {
   return {
+    id: crypto.randomUUID(),
     name: '新測試用例',
     module: '',
     preconditions: '',
     priority: 'P2',
     notes: '',
     steps: [emptyStep(1)],
+    locked: false,
+    based_on_images: [],
   }
 }
 
@@ -69,6 +76,7 @@ export function TestCaseTable({
   highlightedKeys,
   previousValues,
   onFieldFocus,
+  focusCaseIndex,
 }: TestCaseTableProps) {
   const isHighlighted = (key: string) => highlightedKeys?.has(key) ?? false
   const previousValueOf = (key: string) => previousValues?.get(key)
@@ -100,6 +108,24 @@ export function TestCaseTable({
     })
   }, [highlightedKeys])
 
+  // 匯出時如果發現有未鎖定的用例會擋下並傳入 focusCaseIndex，這裡負責把它展開、捲動過去，
+  // 讓使用者不用自己在一長串用例裡找是哪一筆。
+  useEffect(() => {
+    if (focusCaseIndex == null) return
+    setExpandedIndices((prev) => {
+      if (prev.has(focusCaseIndex)) return prev
+      const next = new Set(prev)
+      next.add(focusCaseIndex)
+      return next
+    })
+    requestAnimationFrame(() => {
+      document.getElementById(`field-case:${focusCaseIndex}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    })
+  }, [focusCaseIndex])
+
   const toggleExpanded = (index: number) => {
     setExpandedIndices((prev) => {
       const next = new Set(prev)
@@ -113,6 +139,10 @@ export function TestCaseTable({
     const next = testCases.slice()
     next[index] = { ...next[index], ...patch }
     onChange(next)
+  }
+
+  const toggleLock = (index: number) => {
+    updateCase(index, { locked: !testCases[index].locked })
   }
 
   const updateStep = (caseIndex: number, stepIndex: number, patch: Partial<TestStep>) => {
@@ -162,15 +192,16 @@ export function TestCaseTable({
       {testCases.map((testCase, caseIndex) => {
         const expanded = expandedIndices.has(caseIndex)
         const stepCount = testCase.steps.length
+        const locked = testCase.locked
         return (
         <div
           id={`field-case:${caseIndex}`}
-          className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}${expanded ? '' : ' case-card-collapsed'}`}
+          className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}${expanded ? '' : ' case-card-collapsed'}${locked ? ' case-card-locked' : ''}`}
           key={caseIndex}
         >
           <span className="case-number">{caseIndex + 1}</span>
           <div className="case-card-header" onClick={() => toggleExpanded(caseIndex)}>
-            {expanded ? (
+            {expanded && !locked ? (
               <input
                 className="name-input"
                 value={testCase.name}
@@ -188,6 +219,38 @@ export function TestCaseTable({
                 <span className="case-step-count">{stepCount} 個步驟</span>
               </>
             )}
+            <button
+              type="button"
+              className={`case-lock-toggle${locked ? ' case-lock-toggle-locked' : ''}`}
+              title={locked ? '解鎖，允許編輯' : '鎖定，標記為已審核'}
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleLock(caseIndex)
+              }}
+            >
+              {locked ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="5" y="11" width="14" height="10" rx="2" />
+                  <path
+                    d="M8 11V7a4 4 0 0 1 8 0v4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="5" y="11" width="14" height="10" rx="2" />
+                  <path
+                    d="M8 11V7a4 4 0 0 1 7.4-2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                </svg>
+              )}
+              {locked ? '已鎖定' : '鎖定'}
+            </button>
             <button
               type="button"
               className="case-expand-toggle"
@@ -220,6 +283,7 @@ export function TestCaseTable({
                 id={`field-case:${caseIndex}:module`}
                 className={isHighlighted(`case:${caseIndex}:module`) ? 'cell-highlight' : ''}
                 value={testCase.module}
+                disabled={locked}
                 onChange={(e) => updateCase(caseIndex, { module: e.target.value })}
                 onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:module`])}
                 placeholder="例如 /模組/子功能"
@@ -237,6 +301,7 @@ export function TestCaseTable({
                 id={`field-case:${caseIndex}:priority`}
                 className={isHighlighted(`case:${caseIndex}:priority`) ? 'cell-highlight' : ''}
                 value={testCase.priority}
+                disabled={locked}
                 onChange={(e) => updateCase(caseIndex, { priority: e.target.value })}
                 onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:priority`])}
                 style={{ width: 80 }}
@@ -254,6 +319,7 @@ export function TestCaseTable({
                 id={`field-case:${caseIndex}:preconditions`}
                 className={isHighlighted(`case:${caseIndex}:preconditions`) ? 'cell-highlight' : ''}
                 value={testCase.preconditions}
+                disabled={locked}
                 onChange={(e) => updateCase(caseIndex, { preconditions: e.target.value })}
                 onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:preconditions`])}
               />
@@ -316,7 +382,7 @@ export function TestCaseTable({
                   >
                     <td
                       className="step-number-cell"
-                      draggable={testCase.steps.length > 1}
+                      draggable={testCase.steps.length > 1 && !locked}
                       onDragStart={() => setDragInfo({ caseIndex, stepIndex })}
                       onDragEnd={() => {
                         setDragInfo(null)
@@ -324,7 +390,7 @@ export function TestCaseTable({
                       }}
                     >
                       <span className="step-number-inner">
-                        {testCase.steps.length > 1 && (
+                        {testCase.steps.length > 1 && !locked && (
                           <span className="step-drag-grip" aria-hidden="true">
                             <svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor">
                               <circle cx="2" cy="2" r="1.3" />
@@ -348,6 +414,7 @@ export function TestCaseTable({
                             : ''
                         }
                         value={step.description}
+                        disabled={locked}
                         onChange={(value) =>
                           updateStep(caseIndex, stepIndex, { description: value })
                         }
@@ -370,6 +437,7 @@ export function TestCaseTable({
                             : ''
                         }
                         value={step.expected_result}
+                        disabled={locked}
                         onChange={(value) =>
                           updateStep(caseIndex, stepIndex, { expected_result: value })
                         }
@@ -384,7 +452,11 @@ export function TestCaseTable({
                       )}
                     </td>
                     <td>
-                      <button className="secondary" onClick={() => removeStep(caseIndex, stepIndex)}>
+                      <button
+                        className="secondary"
+                        disabled={locked}
+                        onClick={() => removeStep(caseIndex, stepIndex)}
+                      >
                         刪除
                       </button>
                     </td>
@@ -394,7 +466,7 @@ export function TestCaseTable({
             </tbody>
           </table>
           <div style={{ marginTop: 8 }}>
-            <button className="secondary" onClick={() => addStep(caseIndex)}>
+            <button className="secondary" disabled={locked} onClick={() => addStep(caseIndex)}>
               + 新增步驟
             </button>
           </div>
@@ -405,6 +477,7 @@ export function TestCaseTable({
               id={`field-case:${caseIndex}:notes`}
               className={`notes-textarea${isHighlighted(`case:${caseIndex}:notes`) ? ' cell-highlight' : ''}`}
               value={testCase.notes}
+              disabled={locked}
               onChange={(value) => updateCase(caseIndex, { notes: value })}
               onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:notes`])}
             />
@@ -417,7 +490,12 @@ export function TestCaseTable({
           </label>
 
           <div className="case-footer">
-            <button type="button" className="case-delete-button" onClick={() => removeCase(caseIndex)}>
+            <button
+              type="button"
+              className="case-delete-button"
+              disabled={locked}
+              onClick={() => removeCase(caseIndex)}
+            >
               刪除這筆測試用例
             </button>
           </div>
