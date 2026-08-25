@@ -131,17 +131,12 @@ export async function deleteProject(projectId: string): Promise<void> {
 
 // ---- Materials（專案共用素材庫）----
 
-/** group=true 時，後端會把這批檔案（僅限圖片，至少 2 張）合併存成一筆素材，
- * 而不是各自獨立一筆——用在「同一畫面開關前／開關後」這種需要讓模型知道
- * 彼此相關的對照截圖。 */
 export async function uploadMaterials(
   projectId: string,
   files: File[],
-  group?: boolean,
 ): Promise<{ uploaded: UploadedMaterial[]; total_materials: number }> {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
-  if (group) formData.append('group', 'true')
 
   const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/materials`, {
     method: 'POST',
@@ -185,6 +180,21 @@ export async function deleteMaterial(projectId: string, materialId: string): Pro
     { method: 'DELETE' },
   )
   await handleResponse(response)
+}
+
+/** 把既有的多筆圖片素材（至少 2 筆）合併成一筆——materialIds 第一個當主圖，其餘依序
+ * 成為附加圖片，其餘幾筆素材本身會被刪除。用在使用者已經各自貼上/上傳好幾張截圖、
+ * 事後才想把其中幾張標記成同一組（例如開關前／開關後）的情境。 */
+export async function mergeMaterials(
+  projectId: string,
+  materialIds: string[],
+): Promise<UploadedMaterial> {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/materials/merge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ material_ids: materialIds }),
+  })
+  return handleResponse(response)
 }
 
 export async function getMaterials(projectId: string): Promise<UploadedMaterial[]> {

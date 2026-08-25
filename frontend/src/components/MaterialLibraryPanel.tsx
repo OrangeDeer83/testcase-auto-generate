@@ -30,13 +30,14 @@ export interface TextMaterialDraft {
 interface MaterialLibraryPanelProps {
   materials: UploadedMaterial[]
   busy: boolean
-  onUpload: (files: File[], group?: boolean) => void
+  onUpload: (files: File[]) => void
   onAddText: (drafts: TextMaterialDraft[]) => void
   onRemoveMaterial: (id: string) => void
   onUpdateMaterial: (
     id: string,
     updates: { filename?: string; description?: string; text?: string },
   ) => Promise<boolean>
+  onMergeMaterials: (ids: string[]) => Promise<void>
 }
 
 export function MaterialLibraryPanel({
@@ -46,13 +47,13 @@ export function MaterialLibraryPanel({
   onAddText,
   onRemoveMaterial,
   onUpdateMaterial,
+  onMergeMaterials,
 }: MaterialLibraryPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [textFields, setTextFields] = useState<TextField[]>(() => [
     { id: 1, label: defaultLabel(1), value: '' },
   ])
   const [showContent, setShowContent] = useState(false)
-  const [groupUpload, setGroupUpload] = useState(false)
   const [libraryExpanded, setLibraryExpanded] = useState(
     materials.length <= LIBRARY_COLLAPSE_THRESHOLD,
   )
@@ -64,7 +65,7 @@ export function MaterialLibraryPanel({
 
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
-    onUpload(Array.from(fileList), groupUpload)
+    onUpload(Array.from(fileList))
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -130,16 +131,6 @@ export function MaterialLibraryPanel({
         onChange={(e) => handleFilesSelected(e.target.files)}
       />
 
-      <label className="material-group-upload-toggle">
-        <input
-          type="checkbox"
-          checked={groupUpload}
-          disabled={busy}
-          onChange={(e) => setGroupUpload(e.target.checked)}
-        />
-        這次選的圖片要合併成一組（例如同一畫面「開關前／開關後」的對照截圖，僅限圖片、至少選 2 張）
-      </label>
-
       <p className="subtitle" style={{ marginTop: 16 }}>
         或直接貼上文字，可分成多個欄位，也可以一次貼很多內容到單一欄位：
       </p>
@@ -200,6 +191,7 @@ export function MaterialLibraryPanel({
               busy={busy}
               onUpdateMaterial={onUpdateMaterial}
               onRemoveMaterial={onRemoveMaterial}
+              onMergeMaterials={onMergeMaterials}
               onAddClick={focusUpload}
             />
           )}

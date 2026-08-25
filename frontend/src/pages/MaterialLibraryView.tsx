@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { addTextMaterial, deleteMaterial, updateMaterial, uploadMaterials } from '../api'
+import {
+  addTextMaterial,
+  deleteMaterial,
+  mergeMaterials,
+  updateMaterial,
+  uploadMaterials,
+} from '../api'
 import { MaterialLibraryPanel, type TextMaterialDraft } from '../components/MaterialLibraryPanel'
 import type { ShellContext } from './ProjectLayout'
 
@@ -8,14 +14,27 @@ export function MaterialLibraryView() {
   const { projectId, materials, refreshShell, setError } = useOutletContext<ShellContext>()
   const [busy, setBusy] = useState(false)
 
-  const handleUpload = async (files: File[], group?: boolean) => {
+  const handleUpload = async (files: File[]) => {
     setBusy(true)
     setError(null)
     try {
-      await uploadMaterials(projectId, files, group)
+      await uploadMaterials(projectId, files)
       await refreshShell()
     } catch (err) {
       setError(err instanceof Error ? err.message : '上傳失敗')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleMergeMaterials = async (ids: string[]) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await mergeMaterials(projectId, ids)
+      await refreshShell()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '合併素材失敗')
     } finally {
       setBusy(false)
     }
@@ -70,6 +89,7 @@ export function MaterialLibraryView() {
       onAddText={handleAddText}
       onRemoveMaterial={handleRemoveMaterial}
       onUpdateMaterial={handleUpdateMaterial}
+      onMergeMaterials={handleMergeMaterials}
     />
   )
 }

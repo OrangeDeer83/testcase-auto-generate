@@ -865,6 +865,66 @@ h2 {
   box-shadow: 0 0 0 2px var(--color-primary-soft);
 }
 
+.material-merge-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+  padding: 8px 12px;
+  background: var(--color-panel-alt);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+}
+
+.material-merge-hint {
+  flex: 1;
+  min-width: 200px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.material-card-merge-picked {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-soft);
+}
+
+.material-card-merge-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.material-card-merge-disabled:hover {
+  border-color: var(--color-border-soft);
+  box-shadow: none;
+  transform: none;
+}
+
+.material-card-merge-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-panel);
+  border: 2px solid var(--color-border);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.material-card-merge-picked .material-card-merge-badge {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
 .material-card-checkbox {
   position: absolute;
   top: 8px;
@@ -1768,20 +1828,6 @@ tr.cell-highlight td {
 
 .material-library-collapsible {
   margin-top: 18px;
-}
-
-.material-group-upload-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.material-group-upload-toggle input[type='checkbox'] {
-  cursor: pointer;
 }
 
 .material-library-toggle {

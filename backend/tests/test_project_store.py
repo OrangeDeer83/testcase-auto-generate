@@ -171,3 +171,73 @@ def test_filename_exists_checks_case_insensitively_and_excludes_given_id() -> No
         is False
     )
     assert project_store.filename_exists(project.id, "b.txt") is False
+
+
+def test_merge_materials_combines_into_first_and_deletes_rest() -> None:
+    project = project_store.create_project("專案")
+    before = project_store.add_material(
+        project.id, ParsedMaterial(filename="開關前.png", kind="image", image_data_url="data:BEFORE")
+    )
+    after = project_store.add_material(
+        project.id, ParsedMaterial(filename="開關後.png", kind="image", image_data_url="data:AFTER")
+    )
+    assert before is not None and after is not None
+
+    merged = project_store.merge_materials(project.id, [before.id, after.id])
+
+    assert merged is not None
+    assert merged.id == before.id
+    assert merged.filename == "開關前.png"
+    assert merged.image_data_url == "data:BEFORE"
+    assert merged.embedded_images == ["data:AFTER"]
+    # 被合併進去的那一筆要真的從素材庫消失，不是留著一筆空殼。
+    assert project_store.get_material(project.id, after.id) is None
+    assert [m.id for m in project_store.list_materials(project.id)] == [before.id]
+
+
+def test_merge_materials_preserves_existing_embedded_images_from_both_sides() -> None:
+    """合併「已經是一組」的素材進另一組時，兩邊原本各自帶的圖片都要保留，不能弄丟。"""
+    project = project_store.create_project("專案")
+    primary = project_store.add_material(
+        project.id,
+        ParsedMaterial(
+            filename="組A.png", kind="image", image_data_url="data:A1", embedded_images=["data:A2"]
+        ),
+    )
+    other = project_store.add_material(
+        project.id,
+        ParsedMaterial(
+            filename="組B.png", kind="image", image_data_url="data:B1", embedded_images=["data:B2"]
+        ),
+    )
+    assert primary is not None and other is not None
+
+    merged = project_store.merge_materials(project.id, [primary.id, other.id])
+
+    assert merged is not None
+    assert merged.embedded_images == ["data:A2", "data:B1", "data:B2"]
+
+
+def test_merge_materials_returns_none_when_kind_is_not_image() -> None:
+    project = project_store.create_project("專案")
+    image = project_store.add_material(
+        project.id, ParsedMaterial(filename="a.png", kind="image", image_data_url="data:A")
+    )
+    text = project_store.add_material(
+        project.id, ParsedMaterial(filename="b.pdf", kind="text", text="內容")
+    )
+    assert image is not None and text is not None
+
+    assert project_store.merge_materials(project.id, [image.id, text.id]) is None
+    # 合併失敗不該有任何副作用——兩筆素材都要原封不動還在。
+    assert len(project_store.list_materials(project.id)) == 2
+
+
+def test_merge_materials_returns_none_when_material_missing() -> None:
+    project = project_store.create_project("專案")
+    image = project_store.add_material(
+        project.id, ParsedMaterial(filename="a.png", kind="image", image_data_url="data:A")
+    )
+    assert image is not None
+
+    assert project_store.merge_materials(project.id, [image.id, "does-not-exist"]) is None

@@ -158,6 +158,37 @@ def update_material(
     return material
 
 
+def merge_materials(project_id: str, material_ids: list[str]) -> ParsedMaterial | None:
+    """把 material_ids 依序合併成一筆：第一筆當主圖（filename/description/image_data_url
+    都維持第一筆的），其餘依序放進主圖的 embedded_images，其餘素材本身接著被刪除（沿用
+    delete_material，連帶清掉各對話裡對它們的勾選狀態）。任何一筆不存在、或不是圖片素材，
+    整個合併都不執行，回傳 None。"""
+    with paths.lock():
+        project = get_project(project_id)
+        if not project:
+            return None
+        materials = [get_material(project_id, mid) for mid in material_ids]
+        if any(m is None for m in materials):
+            return None
+        if any(m.kind != "image" for m in materials):
+            return None
+
+        primary, *rest = materials
+        merged_images = list(primary.embedded_images)
+        for m in rest:
+            if m.image_data_url:
+                merged_images.append(m.image_data_url)
+            merged_images.extend(m.embedded_images)
+        primary.embedded_images = merged_images
+        paths.atomic_write_json(paths.material_path(project_id, primary.id), primary)
+        _touch_project(project_id)
+
+    for m in rest:
+        delete_material(project_id, m.id)
+
+    return primary
+
+
 def delete_material(project_id: str, material_id: str) -> bool:
     from app.services import conversation_store  # 延遲匯入，避免循環匯入
 

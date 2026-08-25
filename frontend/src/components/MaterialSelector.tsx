@@ -18,6 +18,8 @@ interface MaterialSelectorProps {
   ) => Promise<boolean>
   onAddFiles: (files: File[]) => void
   onAddText: (label: string, content: string) => void
+  onRemoveMaterial: (id: string) => void
+  onMergeMaterials: (ids: string[]) => Promise<void>
 }
 
 export function MaterialSelector({
@@ -28,6 +30,8 @@ export function MaterialSelector({
   onUpdateMaterial,
   onAddFiles,
   onAddText,
+  onRemoveMaterial,
+  onMergeMaterials,
 }: MaterialSelectorProps) {
   const selectedSet = new Set(selectedIds)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -111,6 +115,8 @@ export function MaterialSelector({
               materials={materials}
               busy={busy}
               onUpdateMaterial={onUpdateMaterial}
+              onRemoveMaterial={onRemoveMaterial}
+              onMergeMaterials={onMergeMaterials}
               selectedIds={selectedSet}
               onToggleSelect={toggle}
               onAddClick={focusUpload}

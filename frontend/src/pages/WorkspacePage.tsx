@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
 import {
   addTextMaterial,
+  deleteMaterial,
   exportExcel,
   generate,
   getConversation,
   getMaterials,
+  mergeMaterials,
   sendChatMessage,
   saveChatLog,
   updateConversation,
@@ -181,6 +183,34 @@ export function WorkspacePage() {
     }
   }
 
+  const handleRemoveMaterial = async (id: string) => {
+    setError(null)
+    try {
+      await deleteMaterial(projectId, id)
+      await refreshShell()
+      // 後端刪除時已經清掉所有對話（含這個對話）persist 過的勾選狀態，這裡只是讓
+      // 畫面上的本地狀態同步跟上，避免之後使用者又勾了別的素材時，把這個已經不存在
+      // 的 id 原封不動地一起存回去。
+      setSelectedMaterialIds((prev) => prev.filter((existing) => existing !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '刪除素材失敗')
+    }
+  }
+
+  const handleMergeMaterials = async (ids: string[]) => {
+    setError(null)
+    try {
+      await mergeMaterials(projectId, ids)
+      await refreshShell()
+      // 被合併掉的那幾筆 id 已經不存在了，道理同上——同步一次本地的勾選狀態，
+      // 只留下合併後還存在的主圖 id（如果它本來就有被勾選的話）。
+      const mergedAwayIds = ids.slice(1)
+      setSelectedMaterialIds((prev) => prev.filter((existing) => !mergedAwayIds.includes(existing)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '合併素材失敗')
+    }
+  }
+
   const handleAddFilesToSelector = async (files: File[]) => {
     setError(null)
     try {
@@ -341,6 +371,8 @@ export function WorkspacePage() {
           onUpdateMaterial={handleUpdateMaterial}
           onAddFiles={handleAddFilesToSelector}
           onAddText={handleAddTextToSelector}
+          onRemoveMaterial={handleRemoveMaterial}
+          onMergeMaterials={handleMergeMaterials}
         />
         <div className="toolbar">
           <span className="subtitle">已選擇 {selectedMaterialIds.length} 項素材</span>
