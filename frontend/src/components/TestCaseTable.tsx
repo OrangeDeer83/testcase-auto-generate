@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { TestCase, TestStep } from '../types'
+import { useImageLightbox } from './ImageLightbox'
+import type { ImageRef, TestCase, TestStep } from '../types'
 
 interface DragInfo {
   caseIndex: number
@@ -14,6 +15,8 @@ interface TestCaseTableProps {
   onFieldFocus?: (keys: string[]) => void
   /** 有給值時，展開該筆用例並捲動過去——用於匯出被鎖定檢查擋下時，跳到第一筆未鎖定的用例。 */
   focusCaseIndex?: number | null
+  /** 「圖N」編號 → 實際素材縮圖網址的反查表，用來畫每筆用例的「依據圖片」。 */
+  imageMap?: Map<number, ImageRef>
 }
 
 interface AutoTextAreaProps {
@@ -77,10 +80,12 @@ export function TestCaseTable({
   previousValues,
   onFieldFocus,
   focusCaseIndex,
+  imageMap,
 }: TestCaseTableProps) {
   const isHighlighted = (key: string) => highlightedKeys?.has(key) ?? false
   const previousValueOf = (key: string) => previousValues?.get(key)
   const focusClears = (keys: string[]) => () => onFieldFocus?.(keys)
+  const { open: openPreview, lightbox } = useImageLightbox()
 
   const [dragInfo, setDragInfo] = useState<DragInfo | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
@@ -276,6 +281,25 @@ export function TestCaseTable({
 
           {expanded && (
           <>
+          {testCase.based_on_images.length > 0 && (
+            <div className="case-based-on-images">
+              <span className="case-based-on-images-label">依據圖片：</span>
+              {testCase.based_on_images.map((number) => {
+                const ref = imageMap?.get(number)
+                if (!ref) return null
+                return (
+                  <span
+                    key={number}
+                    className="material-thumbnail-wrap case-based-on-image"
+                    onClick={() => openPreview(ref.url, `圖${number}：${ref.filename}`)}
+                  >
+                    <img className="material-thumbnail" src={ref.url} alt={`圖${number}`} />
+                    <span className="material-image-number">圖{number}</span>
+                  </span>
+                )
+              })}
+            </div>
+          )}
           <div className="field-row">
             <label style={{ flex: 1 }}>
               所屬模塊
@@ -508,6 +532,7 @@ export function TestCaseTable({
       <button className="secondary" onClick={addCase}>
         + 新增測試用例
       </button>
+      {lightbox}
     </div>
   )
 }

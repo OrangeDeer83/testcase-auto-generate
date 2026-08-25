@@ -16,6 +16,13 @@ export interface TestCase {
   based_on_images: number[]
 }
 
+export interface ImageRef {
+  number: number
+  material_id: string
+  filename: string
+  url: string
+}
+
 export interface ClarificationQuestion {
   id: string
   question: string

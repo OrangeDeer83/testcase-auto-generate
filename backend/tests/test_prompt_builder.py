@@ -1,14 +1,15 @@
 from app.models.material import ParsedMaterial
-from app.services.prompt_builder import build_material_content
+from app.services.prompt_builder import build_material_content, resolve_image_numbers
 
 
-def test_single_image_material_has_no_group_hint() -> None:
+def test_single_image_material_has_no_group_hint_but_is_still_numbered() -> None:
     material = ParsedMaterial(filename="a.png", kind="image", image_data_url="data:image/png;base64,AAA")
 
     content = build_material_content([material])
 
     assert content == [
         {"type": "text", "text": "【圖片：a.png】"},
+        {"type": "text", "text": "圖1："},
         {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA"}},
     ]
 
@@ -64,3 +65,40 @@ def test_text_material_embedded_images_numbered_starting_from_one() -> None:
     assert content[3] == {"type": "image_url", "image_url": {"url": "data:image/png;base64,SHOT1"}}
     assert content[4] == {"type": "text", "text": "圖2："}
     assert content[5] == {"type": "image_url", "image_url": {"url": "data:image/png;base64,SHOT2"}}
+
+
+def test_numbering_is_continuous_across_multiple_materials() -> None:
+    """編號要跨素材連續遞增，不能每個素材各自從圖1開始——不然同一個 prompt 裡會出現
+    兩個「圖1」，模型引用時分不清指的是哪個素材底下的那張圖。"""
+    first = ParsedMaterial(filename="a.png", kind="image", image_data_url="data:image/png;base64,A")
+    second = ParsedMaterial(
+        filename="spec.pdf",
+        kind="text",
+        text="需求內容",
+        embedded_images=["data:image/png;base64,B"],
+    )
+
+    content = build_material_content([first, second])
+
+    assert {"type": "text", "text": "圖1："} in content
+    assert {"type": "image_url", "image_url": {"url": "data:image/png;base64,A"}} in content
+    assert {"type": "text", "text": "圖2："} in content
+    assert {"type": "image_url", "image_url": {"url": "data:image/png;base64,B"}} in content
+
+
+def test_resolve_image_numbers_matches_prompt_numbering() -> None:
+    first = ParsedMaterial(filename="a.png", kind="image", image_data_url="data:image/png;base64,A")
+    second = ParsedMaterial(
+        filename="spec.pdf",
+        kind="text",
+        text="需求內容",
+        embedded_images=["data:image/png;base64,B", "data:image/png;base64,C"],
+    )
+
+    refs = resolve_image_numbers([first, second])
+
+    assert [(r.number, r.material_id, r.filename, r.url) for r in refs] == [
+        (1, first.id, "a.png", "data:image/png;base64,A"),
+        (2, second.id, "spec.pdf", "data:image/png;base64,B"),
+        (3, second.id, "spec.pdf", "data:image/png;base64,C"),
+    ]

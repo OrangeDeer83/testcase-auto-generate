@@ -30,6 +30,22 @@
 
 **驗證方式**：瀏覽器實測，用 JS 檢查 `.question-list-blink` 元素確實存在且套用了 `animation-name: question-blink`；讓 AI 再提出新一輪問題後，確認閃爍會轉移到最新一則、舊的那則不再閃爍；直接匯出確認會出現「⚠️ 目前有尚未回答的澄清問題」提示，且匯出仍正常完成（Excel 匯出 API 回 200，沒有被擋下）。
 
+### 測試用例顯示依據圖片縮圖，可點擊放大
+
+**問題**：測試用例產生出來之後，完全看不出這筆用例是根據哪一張截圖寫的——之前雖然已經讓模型在文字裡用「圖N」引用截圖（見下面 2026-08-22 那筆記錄），但畫面上的用例本身沒有把對應的縮圖秀出來，使用者想確認某筆用例的依據，得自己回素材庫一張張找。另外聊天室（用例助手）裡使用者貼上的截圖雖然有顯示縮圖，但不能點擊放大看細節。
+
+**修法**：
+1. **讓模型直接標出用到哪幾張圖**：`TestCase` 新增 `based_on_images: list[int]` 欄位，值是「圖N」的編號；prompt 規則要求模型每筆用例都要重新判斷、標出實際引用到的圖片編號，純粹根據文件文字寫的用例留空陣列即可。
+2. **編號改成跨素材連續遞增**：原本「圖N」是每個素材各自從 1 開始編號，同一個 prompt 裡如果選了兩個素材，會出現兩個不同的「圖1」，模型分不清、也沒辦法簡單反查回真正的圖片網址。改成用一個貫穿所有素材的計數器，讓編號在整個對話裡是唯一的；連原本沒有分組、只有單張主圖的圖片素材也一併給編號（之前是完全沒有標記），這樣任何一張送給模型的圖都能被引用、也都能反查。`build_material_content`（組 prompt 文字）與新增的 `resolve_image_numbers`（反查「圖N」對應的真實素材與網址）共用同一個走訪函式 `_iter_numbered_images`，避免兩份邏輯各自維護、编號對不起來。
+3. **新增查詢端點**：`GET /conversations/{id}/image-map` 把目前選取素材的「圖N」反查表整包回傳；前端在載入對話、產生用例後、聊天中新增附件後都會重新抓一次，轉成 `Map<number, ImageRef>` 存在 `WorkspacePage` 裡往下傳。
+4. **畫面呈現**：`TestCaseTable` 每筆用例展開時，如果 `based_on_images` 非空，標題下方會有一排縮圖（沿用素材庫既有的圓形編號徽章樣式），點擊可以放大看大圖。同時把「縮圖點擊放大」這段邏輯（`MaterialRow.tsx` 原本就有一份）抽成共用的 `useImageLightbox()` hook，`TestCaseTable` 跟 `ChatPanel`（用例助手訊息裡使用者貼的截圖）都改用同一份，不必各自重寫一次彈窗邏輯。
+
+**背後的通用觀念**：**同一份「編號」邏輯如果只實作在一個地方（這裡原本只有組 prompt 文字那邊），日後只要有第二個地方需要用到同一套編號（這次是反查真實圖片網址），最安全的做法不是照抄一份新邏輯，而是把「怎麼編號」抽成一個共用函式，兩邊都呼叫它**——如果各寫一份，兩份邏輯只要有一點點不同步（例如其中一份忘記處理某個邊界情況），編號就會對不起來，而且這種錯誤往往要到實際比對畫面跟模型輸出時才會發現，很難靠型別檢查抓到。另外，「加了一個新欄位讓模型填」（`based_on_images`）光是加欄位本身沒有用，還要有辦法把模型填的「編號」轉換成使用者看得懂的東西（這裡是縮圖）——跟前一則「分組圖片編號」的教訓是同一件事的延伸：模型輸出的資料只有轉譯回使用者熟悉的呈現方式，才算真正把這個功能做完整。
+
+**檔案**：`backend/app/models/material.py`（新增 `ImageRef`）、`backend/app/models/test_case.py`（`TestCase` 新增 `based_on_images`）、`backend/app/services/prompt_builder.py`（`_iter_numbered_images`／`resolve_image_numbers`，`build_material_content` 改成跨素材連續編號，兩份 prompt 加規則要求模型填 `based_on_images`）、`backend/app/routers/conversations.py`（新增 `GET /image-map`）、`frontend/src/components/ImageLightbox.tsx`（新檔，`useImageLightbox()` 共用 hook）、`frontend/src/components/MaterialRow.tsx`（改用共用 hook）、`frontend/src/components/TestCaseTable.tsx`（依據圖片縮圖）、`frontend/src/components/ChatPanel.tsx`（附加圖片可點擊放大）、`frontend/src/pages/WorkspacePage.tsx`（載入/產生/聊天後刷新 image-map）
+
+**驗證方式**：後端 `test_prompt_builder.py` 新增測試釘住「編號跨素材連續遞增」與「`resolve_image_numbers` 跟 prompt 裡的編號完全對得起來」，`pytest tests/` 49 個測試全過。瀏覽器實測：選兩張真實截圖、呼叫真實模型產生用例，確認回傳的 JSON 裡每筆用例的 `based_on_images` 正確指向對的圖（例如根據第一張截圖寫的幾筆用例都是 `[1]`，根據第二張寫的是 `[2]`），畫面上對應用例展開後縮圖跟編號徽章正確顯示、點擊會放大且標題顯示「圖N：檔名」；素材庫裡原有的縮圖點擊放大（`MaterialRow`）重構後行為不變；聊天室貼一張截圖送出後，訊息裡的縮圖點擊也能正確放大。
+
 ## 2026-08-22 反覆「拆出→合併→拆出」，檔名尾綴無限疊加
 
 **問題**：把圖片從群組拆出來會自動取名「原檔名（拆出的圖片）」。但如果使用者反覆操作——拆出一張圖片、把它跟別的素材重新合併、之後又想再拆出來——檔名尾綴會一直疊加，變成「a.png（拆出的圖片）（拆出的圖片）（拆出的圖片）……」沒完沒了。

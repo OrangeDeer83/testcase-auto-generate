@@ -3,6 +3,7 @@ import type {
   Conversation,
   ConversationSummary,
   GenerationResult,
+  ImageRef,
   Project,
   ProjectSummary,
   TestCase,
@@ -242,6 +243,13 @@ export async function getConversation(projectId: string, conversationId: string)
     `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}`,
   )
   return mapConversation(await handleResponse(response))
+}
+
+export async function getImageMap(projectId: string, conversationId: string): Promise<ImageRef[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/image-map`,
+  )
+  return handleResponse(response)
 }
 
 export async function updateConversation(

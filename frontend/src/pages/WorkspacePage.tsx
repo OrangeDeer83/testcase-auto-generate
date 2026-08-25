@@ -6,6 +6,7 @@ import {
   exportExcel,
   generate,
   getConversation,
+  getImageMap,
   getMaterials,
   mergeMaterials,
   sendChatMessage,
@@ -22,7 +23,7 @@ import { MaterialsModal } from '../components/MaterialsModal'
 import { TestCaseTable } from '../components/TestCaseTable'
 import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
 import type { ShellContext } from './ProjectLayout'
-import type { ChatMessage, GenerationResult, UploadedMaterial } from '../types'
+import type { ChatMessage, GenerationResult, ImageRef, UploadedMaterial } from '../types'
 
 const EMPTY_RESULT: GenerationResult = { test_cases: [], clarification_questions: [] }
 
@@ -77,6 +78,7 @@ export function WorkspacePage() {
   const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
   const [showMaterials, setShowMaterials] = useState(false)
   const [pendingLockFocusIndex, setPendingLockFocusIndex] = useState<number | null>(null)
+  const [imageMap, setImageMap] = useState<Map<number, ImageRef>>(new Map())
 
   useEffect(() => {
     if (!projectId || !conversationId) return
@@ -84,13 +86,18 @@ export function WorkspacePage() {
     setHighlightedKeys(new Set())
     setPreviousValues(new Map())
     skipNextAutosaveRef.current = true
-    Promise.all([getMaterials(projectId), getConversation(projectId, conversationId)])
-      .then(([mats, conversation]) => {
+    Promise.all([
+      getMaterials(projectId),
+      getConversation(projectId, conversationId),
+      getImageMap(projectId, conversationId),
+    ])
+      .then(([mats, conversation, refs]) => {
         setConversationName(conversation.name)
         savedNameRef.current = conversation.name
         setSelectedMaterialIds(conversation.selectedMaterialIds)
         setResult(conversation.lastResult ?? EMPTY_RESULT)
         setChatLog(hydrateChatLog(conversation.chatLog, mats))
+        setImageMap(new Map(refs.map((ref) => [ref.number, ref])))
         setLoaded(true)
       })
       .catch((err) => setError(err instanceof Error ? err.message : '讀取對話失敗'))
@@ -264,6 +271,8 @@ export function WorkspacePage() {
       const log = describeResult(res)
       setChatLog(log)
       await persistChatLog(log)
+      const refs = await getImageMap(projectId, conversationId)
+      setImageMap(new Map(refs.map((ref) => [ref.number, ref])))
     } catch (err) {
       setError(err instanceof Error ? err.message : '產生失敗')
     } finally {
@@ -328,6 +337,11 @@ export function WorkspacePage() {
       const finalLog = [...logWithUserMessage, ...changeSummary, ...describeResult(res)]
       setChatLog(finalLog)
       await persistChatLog(finalLog)
+
+      if (attachmentMaterialId) {
+        const refs = await getImageMap(projectId, conversationId)
+        setImageMap(new Map(refs.map((ref) => [ref.number, ref])))
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '送出訊息失敗')
     } finally {
@@ -448,6 +462,7 @@ export function WorkspacePage() {
           previousValues={previousValues}
           onFieldFocus={clearHighlight}
           focusCaseIndex={pendingLockFocusIndex}
+          imageMap={imageMap}
         />
       </div>
 

@@ -1352,6 +1352,7 @@ button.secondary:hover:not(:disabled) {
   border-radius: var(--radius-sm);
   margin-top: 6px;
   display: block;
+  cursor: zoom-in;
 }
 
 .chat-attachment-preview {
@@ -1892,6 +1893,32 @@ tr.cell-highlight td {
   border-color: #f3c6c2;
   box-shadow: none;
   transform: none;
+}
+
+.case-based-on-images {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.case-based-on-images-label {
+  font-size: 0.8rem;
+  color: var(--color-text-faint);
+  flex-shrink: 0;
+}
+
+.case-based-on-image {
+  width: 48px;
+  height: 48px;
+  cursor: zoom-in;
+}
+
+.case-based-on-image .material-thumbnail {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
 }
 
 .field-row {

@@ -21,3 +21,14 @@ class ParsedMaterial(BaseModel):
     embedded_images: list[str] = Field(default_factory=list)
     description: str = ""
     created_at: float = Field(default_factory=time.time)
+
+
+class ImageRef(BaseModel):
+    """跨素材連續編號的「圖N」反查表裡的一筆——number 對應 prompt_builder.py 送給模型
+    時標記的圖片編號，material_id／url 讓前端可以把測試用例的 based_on_images 畫成
+    實際的縮圖。"""
+
+    number: int
+    material_id: str
+    filename: str
+    url: str
