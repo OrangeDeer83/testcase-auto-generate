@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.models.material import ParsedMaterial
@@ -64,8 +64,38 @@ def list_materials(project_id: str):
 
 
 @router.post("/{project_id}/materials")
-async def upload_materials(project_id: str, files: list[UploadFile] = File(...)):
+async def upload_materials(
+    project_id: str,
+    files: list[UploadFile] = File(...),
+    group: bool = Form(False),
+):
     project = _get_project_or_404(project_id)
+
+    if group:
+        if len(files) < 2:
+            raise HTTPException(status_code=400, detail="合併成一組至少要選 2 張圖片")
+        parsed = []
+        for file in files:
+            content = await file.read()
+            try:
+                material = parse_upload(file.filename or "unnamed", content)
+            except UnsupportedFileTypeError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if material.kind != "image":
+                raise HTTPException(status_code=400, detail="合併成一組只能選圖片檔（PNG/JPG）")
+            parsed.append(material)
+
+        # 分組上傳只存成一筆素材：第一張圖當主圖（image_data_url），其餘依上傳順序放進
+        # embedded_images——這個欄位原本是給 PDF 內嵌圖片用的，這裡借用同一套「一筆素材
+        # 帶多張圖片」的機制，讓 prompt_builder 不用另外處理就能把整組圖片一起送給模型。
+        primary, *rest = parsed
+        primary.embedded_images = [m.image_data_url for m in rest if m.image_data_url]
+        primary.filename = project_store.make_unique_filename(project_id, primary.filename)
+        project_store.add_material(project_id, primary)
+
+        project = project_store.get_project(project_id)
+        uploaded = [{"id": primary.id, "filename": primary.filename, "kind": primary.kind}]
+        return {"uploaded": uploaded, "total_materials": len(project.material_ids)}
 
     uploaded = []
     for file in files:

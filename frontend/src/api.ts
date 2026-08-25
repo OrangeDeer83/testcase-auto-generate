@@ -131,12 +131,17 @@ export async function deleteProject(projectId: string): Promise<void> {
 
 // ---- Materials（專案共用素材庫）----
 
+/** group=true 時，後端會把這批檔案（僅限圖片，至少 2 張）合併存成一筆素材，
+ * 而不是各自獨立一筆——用在「同一畫面開關前／開關後」這種需要讓模型知道
+ * 彼此相關的對照截圖。 */
 export async function uploadMaterials(
   projectId: string,
   files: File[],
+  group?: boolean,
 ): Promise<{ uploaded: UploadedMaterial[]; total_materials: number }> {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
+  if (group) formData.append('group', 'true')
 
   const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/materials`, {
     method: 'POST',

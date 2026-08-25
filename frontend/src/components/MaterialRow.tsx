@@ -122,7 +122,7 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
       {!!material.embedded_images?.length && (
         <div className="material-embedded-images">
           <p className="material-embedded-images-label">
-            文件內夾帶的圖片（共 {material.embedded_images.length} 張，點擊可放大）：
+            {isText ? '文件內夾帶的圖片' : '同一組的其他圖片'}（共 {material.embedded_images.length} 張，點擊可放大）：
           </p>
           <div className="material-embedded-images-grid">
             {material.embedded_images.map((src, index) => (

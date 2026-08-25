@@ -2,6 +2,18 @@
 
 > 記錄每次修 bug／改善 UX 時「為什麼壞掉、怎麼修好的、背後用到什麼可以遷移到其他情境的觀念」，主要是寫給使用者看的學習筆記，也順便讓之後回頭查、或下一個接手的 Claude 不用重新翻一次 diff 才搞懂修法。跟 [PROGRESS.md](PROGRESS.md) 的差異：PROGRESS.md 是變更歷史總覽（做了什麼），這份專注在單一問題的根因、修法、與原理本身。維護方式見 `.claude/skills/fix-notes/SKILL.md`。
 
+## 2026-08-22 新增「圖片合併成一組」上傳選項
+
+**問題**：有些介面只看單一畫面看不出行為，要對照兩張（或更多）截圖才看得出差異，例如同一個開關「切換前」跟「切換後」的畫面。原本上傳圖片時，選幾張檔案就會各自變成幾筆獨立的素材，模型看到的是好幾張互不相關的圖片，沒辦法知道「這幾張其實是同一組、要對照著看」，也沒辦法知道彼此的先後順序。
+
+**修法**：後端 `ParsedMaterial` 本來就有 `embedded_images`（多圖片陣列）欄位，只是原本只有解析 PDF、把 PDF 內夾帶的截圖抽出來時才會用到。這次沒有另外新增欄位，而是讓「使用者上傳時勾選合併成一組」也共用同一個機制：上傳 API（`POST /materials`）新增一個可選的 `group` 參數，勾了之後，選取的這批圖片（至少 2 張、且必須全部是圖片檔）不會各自變成獨立素材，而是第一張當主圖（`image_data_url`），其餘依上傳順序放進 `embedded_images`，整批只存成**一筆**素材。前端 `MaterialLibraryPanel` 加了一個「這次選的圖片要合併成一組」勾選框控制這個行為，預設不勾（維持原本「每個檔案各自一筆」的行為，不影響既有使用習慣）。送給模型時（`prompt_builder.py`），原本 `embedded_images` 只有文字素材（PDF）會被送出去，圖片素材的 `embedded_images` 直接被忽略——這是原本程式碼裡的一個死角，這次一併修正，讓圖片素材也會把 `embedded_images` 送出去，而且額外插入一段提示文字：「以下 N 張圖片跟上面這張同屬一組……通常代表同一畫面在不同狀態或操作前後的對照，請對照理解」，明確告訴模型這些圖片彼此相關、不是各自獨立的畫面。
+
+**背後的通用觀念**：這是「重用既有機制，而不是為新需求另外發明一套」的例子——`embedded_images` 這個欄位的本質其實是「一筆素材可以帶著不只一張圖片」，跟這些圖片是「從 PDF 抽出來的」還是「使用者自己選了要合併」完全無關；一旦看清楚欄位真正代表的意義，新需求只是「多一個填入這個欄位的來源」，不需要改資料結構、也不需要改前端渲染邏輯（`MaterialGrid`／`MaterialRow` 顯示多圖片的程式碼完全沒動，因為它們本來就是照著 `embedded_images` 陣列渲染，不管內容從哪來）。另一個值得注意的點：**「這幾張圖是一組的」這個關係，光是把圖片一起送給模型是不夠的，還要有一句明確的文字告訴模型「這些圖片彼此相關、請對照理解」**——多模態模型看到連續好幾張圖片，預設不會自動假設它們互相關聯，除非提示詞裡明講；只把圖片塞進同一個素材、卻沒有這句提示文字，模型仍然可能把它們當成各自獨立的畫面來分析，達不到「讓模型認為這是一組」的目的。
+
+**檔案**：`backend/app/models/material.py`（更新 `embedded_images` 欄位註解，反映新的用途）、`backend/app/routers/projects.py`（`upload_materials` 新增 `group` 參數與驗證邏輯）、`backend/app/services/prompt_builder.py`（`embedded_images` 迴圈移出 `text`/`image` 的判斷式、改成兩種 kind 都會送；`image` kind 且有 `embedded_images` 時插入分組提示文字）、`frontend/src/components/MaterialLibraryPanel.tsx`（新增分組勾選框）、`frontend/src/api.ts`（`uploadMaterials` 新增 `group` 參數）、`frontend/src/pages/MaterialLibraryView.tsx`（把 `group` 往下傳）、`frontend/src/components/MaterialRow.tsx`（多圖片區塊的標籤文字依素材種類調整，圖片組不再顯示「文件內夾帶的圖片」這種只適用 PDF 情境的措辭）
+
+**驗證方式**：後端補了 `backend/tests/test_prompt_builder.py` 三個單元測試，釘住「單張圖片素材沒有分組提示」「分組圖片素材會送出所有圖片＋分組提示文字」「PDF 文字素材的既有行為不受影響（不會混進新的分組提示）」三種情境；`pytest` 29 個測試全數通過。瀏覽器／curl 實測：直接呼叫 API 上傳 2 張圖片並帶 `group=true`，確認回應只產生 1 筆素材、`embedded_images` 正確包含第 2 張圖；驗證「只選 1 張圖 + `group=true`」與「混了非圖片檔 + `group=true`」都會被擋下並回傳明確錯誤訊息；瀏覽器裡打開這筆分組素材的編輯畫面，確認卡片徽章顯示「🖼️ 1」、詳細畫面正確顯示「同一組的其他圖片（共 1 張）」區塊與縮圖。
+
 ## 2026-08-22 換網路環境後前端連不到後端、專案清單變空白
 
 **問題**：主環境（`http://localhost:5173`）打開後顯示「還沒有任何專案」，但後端的 `backend/data/projects/` 資料夾裡其實有真實資料（`DIATwin` 專案，12 項素材、3 個對話）。瀏覽器 console 有 `net::ERR_CONNECTION_TIMED_OUT`，代表前端根本連不上後端，不是後端真的把資料弄丟了——這點很容易被誤會成資料遺失，其實只是連不到而已。

@@ -8,11 +8,11 @@ export function MaterialLibraryView() {
   const { projectId, materials, refreshShell, setError } = useOutletContext<ShellContext>()
   const [busy, setBusy] = useState(false)
 
-  const handleUpload = async (files: File[]) => {
+  const handleUpload = async (files: File[], group?: boolean) => {
     setBusy(true)
     setError(null)
     try {
-      await uploadMaterials(projectId, files)
+      await uploadMaterials(projectId, files, group)
       await refreshShell()
     } catch (err) {
       setError(err instanceof Error ? err.message : '上傳失敗')

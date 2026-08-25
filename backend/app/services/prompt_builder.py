@@ -101,11 +101,22 @@ def build_material_content(materials: list[ParsedMaterial]) -> list[dict]:
             header += f"\n使用者說明：{material.description}"
         if material.kind == "text":
             content.append({"type": "text", "text": f"{header}\n{material.text}"})
-            for image_url in material.embedded_images:
-                content.append({"type": "image_url", "image_url": {"url": image_url}})
         else:
             content.append({"type": "text", "text": header})
             content.append({"type": "image_url", "image_url": {"url": material.image_data_url}})
+            if material.embedded_images:
+                content.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            f"（以下 {len(material.embedded_images)} 張圖片跟上面這張同屬一組，"
+                            "依上傳順序排列，通常代表同一畫面在不同狀態或操作前後的對照，"
+                            "請對照理解，不要當成互不相關的獨立畫面）"
+                        ),
+                    }
+                )
+        for image_url in material.embedded_images:
+            content.append({"type": "image_url", "image_url": {"url": image_url}})
     return content
 
 
