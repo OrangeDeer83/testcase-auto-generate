@@ -182,6 +182,39 @@ export async function deleteMaterial(projectId: string, materialId: string): Pro
   await handleResponse(response)
 }
 
+/** 把既有的多筆圖片素材（至少 2 筆）合併成一筆——materialIds 第一個當主圖，其餘依序
+ * 成為附加圖片，其餘幾筆素材本身會被刪除。用在使用者已經各自貼上/上傳好幾張截圖、
+ * 事後才想把其中幾張標記成同一組（例如開關前／開關後）的情境。 */
+export async function mergeMaterials(
+  projectId: string,
+  materialIds: string[],
+): Promise<UploadedMaterial> {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/materials/merge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ material_ids: materialIds }),
+  })
+  return handleResponse(response)
+}
+
+/** 把某筆素材 embedded_images 裡第 index 張圖片拆出來，變成一筆獨立的新素材——
+ * 取消合併裡的其中一張，不用整組拆散重來。 */
+export async function ungroupImage(
+  projectId: string,
+  materialId: string,
+  index: number,
+): Promise<{ updated: UploadedMaterial; extracted: UploadedMaterial }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/materials/${materialId}/ungroup`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index }),
+    },
+  )
+  return handleResponse(response)
+}
+
 export async function getMaterials(projectId: string): Promise<UploadedMaterial[]> {
   const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/materials`)
   return handleResponse(response)

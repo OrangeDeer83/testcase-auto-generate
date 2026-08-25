@@ -14,6 +14,9 @@ interface MaterialRowProps {
   ) => Promise<boolean>
   /** 選用的前綴控制項，例如對話素材選取畫面裡用來勾選這個素材的 checkbox。 */
   leadingControl?: ReactNode
+  /** 有給才會在每張附加圖片上顯示「拆出」按鈕——把那張圖片拆成獨立的一筆新素材，
+   * 取消合併裡的其中一張，不用整組拆散重來。 */
+  onUngroupImage?: (materialId: string, index: number) => void
 }
 
 /** 分離主檔名跟副檔名，副檔名不開放編輯，避免使用者改完檔名跟實際內容種類（圖片/文字）對不上。 */
@@ -23,7 +26,14 @@ function splitExtension(filename: string): { base: string; ext: string } {
   return { base: filename.slice(0, idx), ext: filename.slice(idx) }
 }
 
-export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl }: MaterialRowProps) {
+export function MaterialRow({
+  material,
+  busy,
+  onRemove,
+  onUpdate,
+  leadingControl,
+  onUngroupImage,
+}: MaterialRowProps) {
   const { base: initialBase, ext } = splitExtension(material.filename)
   const [nameBase, setNameBase] = useState(initialBase)
   const [description, setDescription] = useState(material.description)
@@ -59,18 +69,26 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
   }
 
   const isText = material.kind === 'text'
+  const hasGroup = !!material.embedded_images?.length
+  // 有分組圖片時，主圖（圖片素材才有）跟附加圖片一起編號，主圖是圖1；純文字素材
+  // 沒有主圖，附加圖片直接從圖1開始——跟 prompt_builder.py 送給模型的編號規則一致，
+  // 畫面上的縮圖編號才能跟模型輸出裡提到的「圖N」對得起來。
+  const embeddedNumberOffset = isText ? 1 : 2
 
   return (
     <li className="material-item">
       <div className="material-item-row">
         {leadingControl}
         {!isText && material.image_data_url ? (
-          <img
-            className="material-thumbnail"
-            src={material.image_data_url}
-            alt={material.filename}
-            onClick={() => setPreviewSrc(material.image_data_url ?? null)}
-          />
+          <span className="material-thumbnail-wrap">
+            <img
+              className="material-thumbnail"
+              src={material.image_data_url}
+              alt={material.filename}
+              onClick={() => setPreviewSrc(material.image_data_url ?? null)}
+            />
+            {hasGroup && <span className="material-image-number">圖1</span>}
+          </span>
         ) : (
           <span className="material-icon">{isText ? '📄' : '🖼️'}</span>
         )}
@@ -122,16 +140,32 @@ export function MaterialRow({ material, busy, onRemove, onUpdate, leadingControl
       {!!material.embedded_images?.length && (
         <div className="material-embedded-images">
           <p className="material-embedded-images-label">
-            文件內夾帶的圖片（共 {material.embedded_images.length} 張，點擊可放大）：
+            {isText ? '文件內夾帶的圖片' : '同一組的其他圖片'}（共 {material.embedded_images.length} 張，點擊可放大）：
           </p>
           <div className="material-embedded-images-grid">
             {material.embedded_images.map((src, index) => (
-              <img
-                key={index}
-                src={src}
-                alt={`${material.filename} 內嵌圖片 ${index + 1}`}
-                onClick={() => setPreviewSrc(src)}
-              />
+              <div key={index} className="material-embedded-image-item">
+                <span className="material-image-number">圖{index + embeddedNumberOffset}</span>
+                <img
+                  src={src}
+                  alt={`${material.filename} 內嵌圖片 ${index + 1}`}
+                  onClick={() => setPreviewSrc(src)}
+                />
+                {onUngroupImage && (
+                  <button
+                    type="button"
+                    className="material-embedded-image-ungroup"
+                    title="拆出這張圖片，變成獨立的素材"
+                    disabled={busy}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onUngroupImage(material.id, index)
+                    }}
+                  >
+                    拆出
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>

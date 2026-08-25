@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { addTextMaterial, deleteMaterial, updateMaterial, uploadMaterials } from '../api'
+import {
+  addTextMaterial,
+  deleteMaterial,
+  mergeMaterials,
+  ungroupImage,
+  updateMaterial,
+  uploadMaterials,
+} from '../api'
 import { MaterialLibraryPanel, type TextMaterialDraft } from '../components/MaterialLibraryPanel'
 import type { ShellContext } from './ProjectLayout'
 
@@ -18,6 +25,29 @@ export function MaterialLibraryView() {
       setError(err instanceof Error ? err.message : '上傳失敗')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const handleMergeMaterials = async (ids: string[]) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await mergeMaterials(projectId, ids)
+      await refreshShell()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '合併素材失敗')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleUngroupImage = async (materialId: string, index: number) => {
+    setError(null)
+    try {
+      await ungroupImage(projectId, materialId, index)
+      await refreshShell()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '拆出圖片失敗')
     }
   }
 
@@ -70,6 +100,8 @@ export function MaterialLibraryView() {
       onAddText={handleAddText}
       onRemoveMaterial={handleRemoveMaterial}
       onUpdateMaterial={handleUpdateMaterial}
+      onMergeMaterials={handleMergeMaterials}
+      onUngroupImage={handleUngroupImage}
     />
   )
 }

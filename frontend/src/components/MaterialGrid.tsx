@@ -13,6 +13,12 @@ interface MaterialGridProps {
   ) => Promise<boolean>
   /** 有給才會在編輯視窗裡顯示刪除鈕——對話素材選取畫面不給，避免誤刪整個專案共用的素材。 */
   onRemoveMaterial?: (id: string) => void
+  /** 有給才會顯示「合併素材成一組」功能——選取多筆既有的素材，合併成一筆，
+   * 讓模型知道它們彼此相關（例如同一畫面「開關前／開關後」的對照截圖，或一份
+   * 需求文件搭配幾張相關截圖）。 */
+  onMergeMaterials?: (ids: string[]) => Promise<void>
+  /** 有給才會在編輯視窗裡每張附加圖片上顯示「拆出」按鈕，把它拆回獨立的一筆素材。 */
+  onUngroupImage?: (materialId: string, index: number) => void
   /** 有給才會在卡片上顯示勾選框（對話素材選取畫面用來挑這次要送給模型的素材）。 */
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
@@ -26,6 +32,8 @@ export function MaterialGrid({
   busy,
   onUpdateMaterial,
   onRemoveMaterial,
+  onMergeMaterials,
+  onUngroupImage,
   selectedIds,
   onToggleSelect,
   onAddClick,
@@ -33,10 +41,53 @@ export function MaterialGrid({
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null)
   const editingMaterial = materials.find((m) => m.id === editingMaterialId) ?? null
 
-  const handleCardKeyDown = (e: KeyboardEvent<HTMLDivElement>, materialId: string) => {
+  // 合併模式：跟「勾選要送給模型的素材」是兩件獨立的事，各自管自己的狀態，
+  // 避免同一個勾選框身兼兩種語意。mergeSelected 用陣列保留選取順序——
+  // 第一個選的會是合併後的主圖，其餘依序變成附加圖片。
+  const [mergeMode, setMergeMode] = useState(false)
+  const [mergeSelected, setMergeSelected] = useState<string[]>([])
+  const [merging, setMerging] = useState(false)
+
+  const exitMergeMode = () => {
+    setMergeMode(false)
+    setMergeSelected([])
+  }
+
+  // 第一個選的（主體）可以是任何種類的素材（文字／PDF／圖片）；選了第一個之後，
+  // 之後每一個都只能是圖片素材——文字內容沒辦法變成合併後的附加圖片。已經選過的
+  // 素材永遠可以再點一次取消選取，不受這條規則限制。
+  const toggleMergeSelect = (material: UploadedMaterial) => {
+    const alreadyPicked = mergeSelected.includes(material.id)
+    if (!alreadyPicked && mergeSelected.length > 0 && material.kind !== 'image') return
+    setMergeSelected((prev) =>
+      alreadyPicked ? prev.filter((id) => id !== material.id) : [...prev, material.id],
+    )
+  }
+
+  const handleConfirmMerge = async () => {
+    if (mergeSelected.length < 2 || !onMergeMaterials) return
+    setMerging(true)
+    try {
+      await onMergeMaterials(mergeSelected)
+      exitMergeMode()
+    } finally {
+      setMerging(false)
+    }
+  }
+
+  const handleCardClick = (material: UploadedMaterial) => {
+    if (busy) return
+    if (mergeMode) {
+      toggleMergeSelect(material)
+      return
+    }
+    setEditingMaterialId(material.id)
+  }
+
+  const handleCardKeyDown = (e: KeyboardEvent<HTMLDivElement>, material: UploadedMaterial) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
-      setEditingMaterialId(materialId)
+      handleCardClick(material)
     }
   }
 
@@ -53,17 +104,55 @@ export function MaterialGrid({
 
   return (
     <>
+      {onMergeMaterials && (
+        <div className="material-merge-bar">
+          {mergeMode ? (
+            <>
+              <span className="material-merge-hint">
+                {mergeSelected.length === 0
+                  ? '先點第一筆當主體（文字／PDF／圖片都可以），之後只能再點圖片素材依序附加上去'
+                  : `已選 ${mergeSelected.length} 筆，第 1 筆點的是主體`}
+              </span>
+              <button type="button" className="secondary" disabled={merging} onClick={exitMergeMode}>
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={merging || mergeSelected.length < 2}
+                onClick={handleConfirmMerge}
+              >
+                合併成一組（{mergeSelected.length}）
+              </button>
+            </>
+          ) : (
+            <button type="button" className="secondary" disabled={busy} onClick={() => setMergeMode(true)}>
+              合併素材成一組
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="material-grid">
         {materials.map((material) => {
           const selected = selectedIds?.has(material.id) ?? false
+          const mergeIndex = mergeSelected.indexOf(material.id)
+          const mergeEligible =
+            mergeIndex >= 0 || mergeSelected.length === 0 || material.kind === 'image'
           return (
             <div
               key={material.id}
-              className={`material-card${selected ? ' material-card-selected' : ''}`}
+              className={[
+                'material-card',
+                selected ? 'material-card-selected' : '',
+                mergeMode && !mergeEligible ? 'material-card-merge-disabled' : '',
+                mergeIndex >= 0 ? 'material-card-merge-picked' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               role="button"
               tabIndex={0}
-              onClick={() => setEditingMaterialId(material.id)}
-              onKeyDown={(e) => handleCardKeyDown(e, material.id)}
+              onClick={() => handleCardClick(material)}
+              onKeyDown={(e) => handleCardKeyDown(e, material)}
             >
               {onToggleSelect && (
                 <input
@@ -90,22 +179,28 @@ export function MaterialGrid({
               <span className="material-card-name" title={material.filename}>
                 {material.filename}
               </span>
-              {onRemoveMaterial && (
-                <button
-                  type="button"
-                  className="material-card-delete"
-                  title="刪除素材"
-                  onClick={(e) => handleDeleteClick(e, material)}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6" />
-                  </svg>
-                </button>
-              )}
+              {mergeMode
+                ? mergeEligible && (
+                    <span className="material-card-merge-badge" aria-hidden="true">
+                      {mergeIndex >= 0 ? mergeIndex + 1 : ''}
+                    </span>
+                  )
+                : onRemoveMaterial && (
+                    <button
+                      type="button"
+                      className="material-card-delete"
+                      title="刪除素材"
+                      onClick={(e) => handleDeleteClick(e, material)}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6" />
+                      </svg>
+                    </button>
+                  )}
             </div>
           )
         })}
-        {onAddClick && (
+        {onAddClick && !mergeMode && (
           <button type="button" className="material-card material-card-add" onClick={onAddClick}>
             <span className="material-card-thumb">
               <span className="material-card-icon">+</span>
@@ -136,6 +231,7 @@ export function MaterialGrid({
                   : undefined
               }
               onUpdate={onUpdateMaterial}
+              onUngroupImage={onUngroupImage}
             />
           </ul>
         </ModalOverlay>

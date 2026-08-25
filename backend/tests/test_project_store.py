@@ -171,3 +171,189 @@ def test_filename_exists_checks_case_insensitively_and_excludes_given_id() -> No
         is False
     )
     assert project_store.filename_exists(project.id, "b.txt") is False
+
+
+def test_merge_materials_combines_into_first_and_deletes_rest() -> None:
+    project = project_store.create_project("專案")
+    before = project_store.add_material(
+        project.id, ParsedMaterial(filename="開關前.png", kind="image", image_data_url="data:BEFORE")
+    )
+    after = project_store.add_material(
+        project.id, ParsedMaterial(filename="開關後.png", kind="image", image_data_url="data:AFTER")
+    )
+    assert before is not None and after is not None
+
+    merged = project_store.merge_materials(project.id, [before.id, after.id])
+
+    assert merged is not None
+    assert merged.id == before.id
+    assert merged.filename == "開關前.png"
+    assert merged.image_data_url == "data:BEFORE"
+    assert merged.embedded_images == ["data:AFTER"]
+    # 被合併進去的那一筆要真的從素材庫消失，不是留著一筆空殼。
+    assert project_store.get_material(project.id, after.id) is None
+    assert [m.id for m in project_store.list_materials(project.id)] == [before.id]
+
+
+def test_merge_materials_preserves_existing_embedded_images_from_both_sides() -> None:
+    """合併「已經是一組」的素材進另一組時，兩邊原本各自帶的圖片都要保留，不能弄丟。"""
+    project = project_store.create_project("專案")
+    primary = project_store.add_material(
+        project.id,
+        ParsedMaterial(
+            filename="組A.png", kind="image", image_data_url="data:A1", embedded_images=["data:A2"]
+        ),
+    )
+    other = project_store.add_material(
+        project.id,
+        ParsedMaterial(
+            filename="組B.png", kind="image", image_data_url="data:B1", embedded_images=["data:B2"]
+        ),
+    )
+    assert primary is not None and other is not None
+
+    merged = project_store.merge_materials(project.id, [primary.id, other.id])
+
+    assert merged is not None
+    assert merged.embedded_images == ["data:A2", "data:B1", "data:B2"]
+
+
+def test_merge_materials_allows_text_material_as_primary() -> None:
+    """第一筆選的（主體）可以是文字／PDF 素材，圖片依序變成它的 embedded_images。"""
+    project = project_store.create_project("專案")
+    spec = project_store.add_material(
+        project.id, ParsedMaterial(filename="需求.pdf", kind="text", text="開關功能說明")
+    )
+    before = project_store.add_material(
+        project.id, ParsedMaterial(filename="開關前.png", kind="image", image_data_url="data:BEFORE")
+    )
+    after = project_store.add_material(
+        project.id, ParsedMaterial(filename="開關後.png", kind="image", image_data_url="data:AFTER")
+    )
+    assert spec is not None and before is not None and after is not None
+
+    merged = project_store.merge_materials(project.id, [spec.id, before.id, after.id])
+
+    assert merged is not None
+    assert merged.id == spec.id
+    assert merged.kind == "text"
+    assert merged.text == "開關功能說明"
+    assert merged.embedded_images == ["data:BEFORE", "data:AFTER"]
+    assert project_store.get_material(project.id, before.id) is None
+    assert project_store.get_material(project.id, after.id) is None
+
+
+def test_merge_materials_returns_none_when_non_first_item_is_not_image() -> None:
+    """文字／PDF 素材只能當第一筆（主體），排在第二筆以後一律不行——文字內容沒辦法
+    變成 embedded_images 裡的一張圖。"""
+    project = project_store.create_project("專案")
+    image = project_store.add_material(
+        project.id, ParsedMaterial(filename="a.png", kind="image", image_data_url="data:A")
+    )
+    text = project_store.add_material(
+        project.id, ParsedMaterial(filename="b.pdf", kind="text", text="內容")
+    )
+    assert image is not None and text is not None
+
+    assert project_store.merge_materials(project.id, [image.id, text.id]) is None
+    # 合併失敗不該有任何副作用——兩筆素材都要原封不動還在。
+    assert len(project_store.list_materials(project.id)) == 2
+
+
+def test_merge_materials_returns_none_when_material_missing() -> None:
+    project = project_store.create_project("專案")
+    image = project_store.add_material(
+        project.id, ParsedMaterial(filename="a.png", kind="image", image_data_url="data:A")
+    )
+    assert image is not None
+
+    assert project_store.merge_materials(project.id, [image.id, "does-not-exist"]) is None
+
+
+def test_ungroup_image_extracts_into_new_standalone_material() -> None:
+    project = project_store.create_project("專案")
+    grouped = project_store.add_material(
+        project.id,
+        ParsedMaterial(
+            filename="開關前.png",
+            kind="image",
+            image_data_url="data:BEFORE",
+            embedded_images=["data:AFTER"],
+        ),
+    )
+    assert grouped is not None
+
+    result = project_store.ungroup_image(project.id, grouped.id, 0)
+
+    assert result is not None
+    updated, extracted = result
+    assert updated.id == grouped.id
+    assert updated.embedded_images == []
+    assert extracted.kind == "image"
+    assert extracted.image_data_url == "data:AFTER"
+    assert extracted.id != grouped.id
+    assert extracted.filename == "開關前.png（拆出的圖片）"
+
+    # 拆出來的那張圖要真的變成素材庫裡一筆獨立、找得到的素材。
+    materials = project_store.list_materials(project.id)
+    assert {m.id for m in materials} == {grouped.id, extracted.id}
+
+
+def test_ungroup_image_does_not_stack_suffix_on_repeated_cycles() -> None:
+    """反覆「拆出→合併回去→再拆出」不該讓檔名尾綴無限疊加成
+    「（拆出的圖片）（拆出的圖片）……」——這是實際被使用者操作重現出來的 bug。"""
+    project = project_store.create_project("專案")
+    # 模擬素材已經是「上一輪拆出→又被合併回去當主體」的結果，檔名已經帶著一次
+    # 尾綴，這次又要再拆出一次；另外留一筆不相干的素材在專案裡，確保等一下的
+    # 斷言不是因為「專案裡只有這一筆」才巧合通過。
+    project_store.add_material(
+        project.id, ParsedMaterial(filename="不相干.png", kind="image", image_data_url="data:X")
+    )
+    already_extracted_once = project_store.add_material(
+        project.id,
+        ParsedMaterial(
+            filename="a.png（拆出的圖片）",
+            kind="image",
+            image_data_url="data:A",
+            embedded_images=["data:B", "data:C"],
+        ),
+    )
+    assert already_extracted_once is not None
+
+    # 連續拆兩次，模擬使用者反覆操作——如果尾綴會疊加，第二次拆出來的檔名
+    # 就會變成「a.png（拆出的圖片）（拆出的圖片）」。
+    result1 = project_store.ungroup_image(project.id, already_extracted_once.id, 0)
+    assert result1 is not None
+    updated1, extracted1 = result1
+    assert "（拆出的圖片）（拆出的圖片）" not in extracted1.filename
+
+    result2 = project_store.ungroup_image(project.id, updated1.id, 0)
+    assert result2 is not None
+    _, extracted2 = result2
+    assert "（拆出的圖片）（拆出的圖片）" not in extracted2.filename
+    # 兩次拆出來的檔名各自只帶一份尾綴（後面可能因為撞名多一個 (2) 之類的編號，
+    # 但尾綴本身不能疊加），且彼此不相同（各自是獨立素材，不是同一筆）。
+    assert extracted1.filename.count("（拆出的圖片）") == 1
+    assert extracted2.filename.count("（拆出的圖片）") == 1
+    assert extracted1.id != extracted2.id
+
+
+def test_ungroup_image_returns_none_when_index_out_of_range() -> None:
+    project = project_store.create_project("專案")
+    grouped = project_store.add_material(
+        project.id,
+        ParsedMaterial(filename="a.png", kind="image", image_data_url="data:A", embedded_images=["data:B"]),
+    )
+    assert grouped is not None
+
+    assert project_store.ungroup_image(project.id, grouped.id, 1) is None
+    assert project_store.ungroup_image(project.id, grouped.id, -1) is None
+    # 失敗不該有副作用——原本那筆素材的 embedded_images 要維持不變。
+    refreshed = project_store.get_material(project.id, grouped.id)
+    assert refreshed is not None
+    assert refreshed.embedded_images == ["data:B"]
+
+
+def test_ungroup_image_returns_none_when_material_missing() -> None:
+    project = project_store.create_project("專案")
+    assert project_store.ungroup_image(project.id, "does-not-exist", 0) is None

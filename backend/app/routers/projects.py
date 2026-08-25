@@ -149,3 +149,42 @@ def delete_material(project_id: str, material_id: str):
         raise HTTPException(status_code=404, detail="找不到這個素材")
     project = project_store.get_project(project_id)
     return {"total_materials": len(project.material_ids)}
+
+
+class MergeMaterialsPayload(BaseModel):
+    material_ids: list[str]
+
+
+@router.post("/{project_id}/materials/merge", response_model=ParsedMaterial)
+def merge_materials(project_id: str, payload: MergeMaterialsPayload):
+    """把使用者事後在素材庫裡選取的多筆既有素材合併成一筆——用在「同一畫面開關前／
+    開關後」這種需要讓模型知道彼此相關的對照截圖，也可以是一份需求文件／PDF 搭配
+    幾張相關截圖。不限於上傳當下就一次選好幾個檔案，也支援先各自貼上／上傳，之後
+    再回頭選取合併的用法。選取順序決定合併結果：第一筆選的當主體（可以是文字／PDF
+    素材，也可以是圖片素材），之後選的每一筆都必須是圖片素材。"""
+    _get_project_or_404(project_id)
+    if len(payload.material_ids) < 2:
+        raise HTTPException(status_code=400, detail="合併成一組至少要選 2 筆素材")
+    merged = project_store.merge_materials(project_id, payload.material_ids)
+    if not merged:
+        raise HTTPException(
+            status_code=400,
+            detail="合併失敗，請確認選取的素材都存在，且第一筆以外都是圖片素材",
+        )
+    return merged
+
+
+class UngroupImagePayload(BaseModel):
+    index: int
+
+
+@router.post("/{project_id}/materials/{material_id}/ungroup")
+def ungroup_image(project_id: str, material_id: str, payload: UngroupImagePayload):
+    """把某筆素材 embedded_images 裡的第 index 張圖片拆出來，變成一筆獨立的新素材，
+    原本那筆素材則移除這張圖片——用來取消合併裡的其中一張，不用整組拆散重來。"""
+    _get_project_or_404(project_id)
+    result = project_store.ungroup_image(project_id, material_id, payload.index)
+    if not result:
+        raise HTTPException(status_code=400, detail="拆出失敗，請確認素材與圖片索引存在")
+    updated, extracted = result
+    return {"updated": updated, "extracted": extracted}

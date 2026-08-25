@@ -99,13 +99,51 @@ def build_material_content(materials: list[ParsedMaterial]) -> list[dict]:
         header = f"【{label}：{material.filename}】"
         if material.description:
             header += f"\n使用者說明：{material.description}"
+
         if material.kind == "text":
             content.append({"type": "text", "text": f"{header}\n{material.text}"})
-            for image_url in material.embedded_images:
-                content.append({"type": "image_url", "image_url": {"url": image_url}})
+            if material.embedded_images:
+                # 純文字素材沒有自己的主圖，附加的圖片就從「圖1」開始編號。
+                content.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            f"（以下 {len(material.embedded_images)} 張圖片跟這份素材是同一組，"
+                            "依序編號為圖1、圖2……可能是文件內夾帶的截圖，也可能是使用者額外"
+                            "標記為相關的畫面，請對照上面的文字內容一併理解。如果在測試用例、"
+                            "備註或澄清問題裡需要指出是哪一張，請直接用「圖1」「圖2」這種編號"
+                            "稱呼，不要用「上圖」「下圖」這種畫面上根本沒有編號可以對應的說法）"
+                        ),
+                    }
+                )
+                for i, image_url in enumerate(material.embedded_images, start=1):
+                    content.append({"type": "text", "text": f"圖{i}："})
+                    content.append({"type": "image_url", "image_url": {"url": image_url}})
         else:
             content.append({"type": "text", "text": header})
-            content.append({"type": "image_url", "image_url": {"url": material.image_data_url}})
+            if material.embedded_images:
+                # 有附加圖片時，連同主圖一起從「圖1」開始編號，主圖是圖1、附加圖片
+                # 依序是圖2、圖3……讓模型可以精確指出是哪一張，畫面上的縮圖也會用
+                # 同一套編號，兩邊對得起來。
+                content.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            f"（以下共 {len(material.embedded_images) + 1} 張圖片同屬一組，"
+                            "依序編號為圖1、圖2……通常代表同一畫面在不同狀態或操作前後的"
+                            "對照，請對照理解，不要當成互不相關的獨立畫面。如果在測試用例、"
+                            "備註或澄清問題裡需要指出是哪一張，請直接用「圖1」「圖2」這種編號"
+                            "稱呼，不要用「上圖」「下圖」這種畫面上根本沒有編號可以對應的說法）"
+                        ),
+                    }
+                )
+                content.append({"type": "text", "text": "圖1："})
+                content.append({"type": "image_url", "image_url": {"url": material.image_data_url}})
+                for i, image_url in enumerate(material.embedded_images, start=2):
+                    content.append({"type": "text", "text": f"圖{i}："})
+                    content.append({"type": "image_url", "image_url": {"url": image_url}})
+            else:
+                content.append({"type": "image_url", "image_url": {"url": material.image_data_url}})
     return content
 
 
