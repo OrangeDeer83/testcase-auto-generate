@@ -23,10 +23,21 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
   const { open: openPreview, lightbox } = useImageLightbox()
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ block: 'end' })
   }, [log, busy])
+
+  useEffect(() => {
+    if (!busy) {
+      setElapsedSeconds(0)
+      return
+    }
+    setElapsedSeconds(0)
+    const timer = setInterval(() => setElapsedSeconds((s) => s + 1), 1000)
+    return () => clearInterval(timer)
+  }, [busy])
 
   const canSend = (draft.trim() || attachedFile) && !busy
 
@@ -109,7 +120,14 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
         ))}
         {busy && (
           <div className="chat-entry entry-assistant">
-            <div className="chat-bubble question">思考中…</div>
+            <div className="chat-bubble question">
+              思考中…{elapsedSeconds > 0 ? `（已等待 ${elapsedSeconds} 秒）` : ''}
+              {elapsedSeconds >= 20 && (
+                <div className="chat-bubble-hint">
+                  模型回應時間較長屬正常現象，尤其是附件含較多圖片或文件時，請耐心等候
+                </div>
+              )}
+            </div>
           </div>
         )}
         <div ref={logEndRef} />
