@@ -30,6 +30,11 @@ test('建立專案 → 新增素材 → 產生測試用例 → 匯出 Excel', as
   await expect(page.locator('.case-card')).toHaveCount(1, { timeout: 15_000 })
   await expect(page.locator('.case-card input.name-input')).toHaveValue('登入成功')
 
+  // 匯出前要先鎖定審核，未鎖定的用例會擋下匯出（見「用例鎖定審核」功能）。
+  // 按鈕的可及名稱來自可見文字「鎖定」/「已鎖定」，title 只是 tooltip，不算進 accessible name。
+  await page.getByRole('button', { name: '鎖定', exact: true }).click()
+  await expect(page.getByRole('button', { name: '已鎖定', exact: true })).toBeVisible()
+
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: '匯出 Excel' }).click()
   const download = await downloadPromise

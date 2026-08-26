@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 from app.logging_config import logger
 from app.models.conversation import ChatEntry, Conversation, ConversationSummary
+from app.models.material import ImageRef
 from app.models.test_case import ChatMessage, GenerationResult, TestCase
 from app.services import conversation_store, project_store
 from app.services.llm_client import chat_completion
@@ -11,7 +12,9 @@ from app.services.prompt_builder import (
     build_chat_messages,
     build_messages,
     parse_generation_result,
+    resolve_image_numbers,
 )
+from app.services.test_case_lock import enforce_lock_on_llm_result, enforce_lock_on_manual_edit
 
 router = APIRouter(prefix="/api/projects/{project_id}/conversations", tags=["conversations"])
 
@@ -58,6 +61,17 @@ def list_conversations(project_id: str):
 def get_conversation(project_id: str, conversation_id: str):
     _get_project_or_404(project_id)
     return _get_conversation_or_404(project_id, conversation_id)
+
+
+@router.get("/{conversation_id}/image-map", response_model=list[ImageRef])
+def get_image_map(project_id: str, conversation_id: str):
+    """把「圖N」反查回實際素材與網址，讓前端把測試用例的 based_on_images 畫成縮圖。
+    每次都用「現在」選取的素材現算，如果素材在產生用例之後被刪除／拆出／合併過，
+    編號可能對不上當初產生時的畫面——這是已知限制，不在這次處理範圍內。"""
+    _get_project_or_404(project_id)
+    conversation = _get_conversation_or_404(project_id, conversation_id)
+    materials = _selected_materials(project_id, conversation)
+    return resolve_image_numbers(materials)
 
 
 class ConversationUpdatePayload(BaseModel):
@@ -111,6 +125,8 @@ def generate(project_id: str, conversation_id: str):
         logger.error("POST /generate conversation=%s 解析失敗: %s", conversation_id, exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+    result = enforce_lock_on_llm_result(previous_cases, result)
     conversation.last_result = result
     conversation_store.save_conversation(project_id, conversation)
     logger.info(
@@ -170,6 +186,8 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
         logger.error("POST /chat conversation=%s 解析失敗: %s", conversation_id, exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+    result = enforce_lock_on_llm_result(previous_cases, result)
     conversation.last_result = result
     conversation.llm_history.append(
         ChatMessage(role="assistant", content=_summarize_for_history(result))
@@ -194,6 +212,8 @@ def _summarize_for_history(result: GenerationResult) -> str:
 def update_test_cases(project_id: str, conversation_id: str, payload: GenerationResult):
     _get_project_or_404(project_id)
     conversation = _get_conversation_or_404(project_id, conversation_id)
+    previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+    payload.test_cases = enforce_lock_on_manual_edit(previous_cases, payload.test_cases)
     conversation.last_result = payload
     conversation_store.save_conversation(project_id, conversation)
     return payload

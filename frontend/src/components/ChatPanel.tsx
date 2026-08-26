@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ClipboardEvent } from 'react'
 import { getPastedImageFile } from '../clipboardImage'
+import { useImageLightbox } from './ImageLightbox'
 import type { ChatMessage } from '../types'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
@@ -21,6 +22,7 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
   const [attachedPreviewUrl, setAttachedPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
+  const { open: openPreview, lightbox } = useImageLightbox()
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ block: 'end' })
@@ -70,7 +72,11 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
             className={`chat-entry entry-${entry.role}${entry.questions ? ' has-questions' : ''}`}
           >
             {entry.questions ? (
-              <div className="question-list">
+              <div
+                className={`question-list${
+                  idx === log.length - 1 && entry.role === 'assistant' ? ' question-list-blink' : ''
+                }`}
+              >
                 <div className="question-list-title">
                   {entry.questions.length > 1
                     ? `有 ${entry.questions.length} 個問題需要您協助確認：`
@@ -87,7 +93,14 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
               <>
                 <div className={`chat-bubble ${entry.role === 'user' ? 'answer' : 'question'}`}>
                   {entry.content}
-                  {entry.imageUrl && <img src={entry.imageUrl} alt="附加圖片" />}
+                  {entry.imageUrl && (
+                    <img
+                      className="chat-bubble-image"
+                      src={entry.imageUrl}
+                      alt="附加圖片"
+                      onClick={() => openPreview(entry.imageUrl!, '附加圖片')}
+                    />
+                  )}
                 </div>
                 {entry.context && <div className="chat-bubble context">依據：{entry.context}</div>}
               </>
@@ -148,6 +161,7 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
           送出
         </button>
       </div>
+      {lightbox}
     </>
   )
 }

@@ -6,6 +6,7 @@ import {
   exportExcel,
   generate,
   getConversation,
+  getImageMap,
   getMaterials,
   mergeMaterials,
   sendChatMessage,
@@ -22,9 +23,15 @@ import { MaterialsModal } from '../components/MaterialsModal'
 import { TestCaseTable } from '../components/TestCaseTable'
 import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
 import type { ShellContext } from './ProjectLayout'
-import type { ChatMessage, GenerationResult, UploadedMaterial } from '../types'
+import type { ChatMessage, GenerationResult, ImageRef, UploadedMaterial } from '../types'
 
 const EMPTY_RESULT: GenerationResult = { test_cases: [], clarification_questions: [] }
+
+interface WorkspaceNotice {
+  message: string
+  focusIndex?: number
+  focusToken?: number
+}
 
 function newId(): string {
   return crypto.randomUUID()
@@ -76,6 +83,31 @@ export function WorkspacePage() {
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
   const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
   const [showMaterials, setShowMaterials] = useState(false)
+  // 匯出時的兩種非阻斷／半阻斷提示（還有用例未鎖定、還有問題未回答）共用同一個狀態、
+  // 同一個畫面位置（標題列，跟 error-banner 分開，不會借用通用錯誤狀態）——這樣才能
+  // 讓兩者都自動消失：一旦當初觸發的條件不再成立（該用例鎖定了／該問題有新訊息了），
+  // 就不用使用者自己意識到要手動關掉。focusIndex/focusToken 只有「還有用例未鎖定」
+  // 這種需要捲動跳轉的提示才會帶；token 每次擋下都遞增，避免連續兩次剛好指向同一筆
+  // （index 沒變）時，因為值沒變化而不會重新觸發 TestCaseTable 裡的捲動/展開。
+  const [workspaceNotice, setWorkspaceNotice] = useState<WorkspaceNotice | null>(null)
+  const focusTokenRef = useRef(0)
+  const [imageMap, setImageMap] = useState<Map<number, ImageRef>>(new Map())
+
+  useEffect(() => {
+    if (!workspaceNotice) return
+    if (workspaceNotice.focusIndex != null) {
+      if (
+        result.test_cases[workspaceNotice.focusIndex]?.locked ||
+        result.test_cases.every((tc) => tc.locked)
+      ) {
+        setWorkspaceNotice(null)
+      }
+      return
+    }
+    const lastEntry = chatLog[chatLog.length - 1]
+    const hasUnanswered = lastEntry?.role === 'assistant' && (lastEntry.questions?.length ?? 0) > 0
+    if (!hasUnanswered) setWorkspaceNotice(null)
+  }, [result, chatLog, workspaceNotice])
 
   useEffect(() => {
     if (!projectId || !conversationId) return
@@ -83,13 +115,18 @@ export function WorkspacePage() {
     setHighlightedKeys(new Set())
     setPreviousValues(new Map())
     skipNextAutosaveRef.current = true
-    Promise.all([getMaterials(projectId), getConversation(projectId, conversationId)])
-      .then(([mats, conversation]) => {
+    Promise.all([
+      getMaterials(projectId),
+      getConversation(projectId, conversationId),
+      getImageMap(projectId, conversationId),
+    ])
+      .then(([mats, conversation, refs]) => {
         setConversationName(conversation.name)
         savedNameRef.current = conversation.name
         setSelectedMaterialIds(conversation.selectedMaterialIds)
         setResult(conversation.lastResult ?? EMPTY_RESULT)
         setChatLog(hydrateChatLog(conversation.chatLog, mats))
+        setImageMap(new Map(refs.map((ref) => [ref.number, ref])))
         setLoaded(true)
       })
       .catch((err) => setError(err instanceof Error ? err.message : '讀取對話失敗'))
@@ -263,6 +300,8 @@ export function WorkspacePage() {
       const log = describeResult(res)
       setChatLog(log)
       await persistChatLog(log)
+      const refs = await getImageMap(projectId, conversationId)
+      setImageMap(new Map(refs.map((ref) => [ref.number, ref])))
     } catch (err) {
       setError(err instanceof Error ? err.message : '產生失敗')
     } finally {
@@ -327,6 +366,11 @@ export function WorkspacePage() {
       const finalLog = [...logWithUserMessage, ...changeSummary, ...describeResult(res)]
       setChatLog(finalLog)
       await persistChatLog(finalLog)
+
+      if (attachmentMaterialId) {
+        const refs = await getImageMap(projectId, conversationId)
+        setImageMap(new Map(refs.map((ref) => [ref.number, ref])))
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '送出訊息失敗')
     } finally {
@@ -335,9 +379,24 @@ export function WorkspacePage() {
   }
 
   const handleExport = async () => {
+    const firstUnlockedIndex = result.test_cases.findIndex((tc) => !tc.locked)
+    if (firstUnlockedIndex !== -1) {
+      focusTokenRef.current += 1
+      setWorkspaceNotice({
+        message: '⚠️ 有用例未鎖定',
+        focusIndex: firstUnlockedIndex,
+        focusToken: focusTokenRef.current,
+      })
+      return
+    }
+
     setExporting(true)
     setError(null)
     try {
+      const lastEntry = chatLog[chatLog.length - 1]
+      if (lastEntry?.role === 'assistant' && (lastEntry.questions?.length ?? 0) > 0) {
+        setWorkspaceNotice({ message: '⚠️ 有問題未回答' })
+      }
       await updateTestCases(projectId, conversationId, result)
       const blob = await exportExcel(projectId, conversationId)
       const url = URL.createObjectURL(blob)
@@ -406,6 +465,26 @@ export function WorkspacePage() {
           onBlur={(e) => commitRename(e.target.value)}
         />
         <span className="subtitle workspace-count">共 {result.test_cases.length} 筆用例</span>
+        {workspaceNotice && (
+          <div
+            className="workspace-notice"
+            title={
+              workspaceNotice.focusIndex != null
+                ? '還有測試用例尚未鎖定審核，已為您跳到第一筆未鎖定的用例——鎖定後這則提示會自動消失'
+                : '目前有尚未回答的澄清問題，建議確認後再匯出（本次仍會照常匯出）'
+            }
+          >
+            <span>{workspaceNotice.message}</span>
+            <button
+              type="button"
+              className="workspace-notice-close"
+              title="關閉提示"
+              onClick={() => setWorkspaceNotice(null)}
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <div className="workspace-actions">
           <button className="secondary" onClick={() => setShowMaterials(true)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1c2733" strokeWidth="2">
@@ -435,6 +514,9 @@ export function WorkspacePage() {
           highlightedKeys={highlightedKeys}
           previousValues={previousValues}
           onFieldFocus={clearHighlight}
+          focusCaseIndex={workspaceNotice?.focusIndex ?? null}
+          focusToken={workspaceNotice?.focusToken}
+          imageMap={imageMap}
         />
       </div>
 

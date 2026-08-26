@@ -2,7 +2,9 @@ import json
 
 from json_repair import repair_json
 
-from app.models.material import ParsedMaterial
+from collections.abc import Iterator
+
+from app.models.material import ImageRef, ParsedMaterial
 from app.models.test_case import ChatMessage, ClarificationQuestion, GenerationResult, TestCase
 
 SYSTEM_PROMPT = """你是一位資深 QA 測試工程師，任務是根據使用者提供的需求文件、UI 截圖與 API 文件，撰寫測試用例。
@@ -18,7 +20,8 @@ SYSTEM_PROMPT = """你是一位資深 QA 測試工程師，任務是根據使用
         {"step_no": 1, "description": "操作描述", "expected_result": "預期結果"}
       ],
       "priority": "依重要性判斷的優先級，例如 P0/P1/P2/P3",
-      "notes": "補充備註，例如已知限制、風險或參考說明（若無則留空字串）"
+      "notes": "補充備註，例如已知限制、風險或參考說明（若無則留空字串）",
+      "based_on_images": [1, 3]
     }
   ],
   "clarification_questions": [
@@ -39,7 +42,8 @@ SYSTEM_PROMPT = """你是一位資深 QA 測試工程師，任務是根據使用
 5. module 與 notes 屬於分類/補充性質的欄位，不影響測試邏輯正確性，判斷不出來時直接留空字串即可，不需要為此提出 clarification_questions。
 6. 所有文字使用繁體中文。
 7. 任何字串欄位的內容裡都絕對不可以出現半形雙引號 " ——包含舉例、引用畫面文字、陣列/程式碼片段等情況。需要引用或舉例時一律改用全形「」，例如要表達陣列 ["A", "A"] 時要寫成「A、A」或 (A, A)，不可以直接把 " 寫進字串內容，否則會破壞 JSON 格式。
-8. 只回傳 JSON 本身。
+8. 每筆測試用例如果是根據前面素材內容裡某幾張截圖寫的（例如描述畫面上的元素、狀態、文字、操作結果），把對應的圖片編號（素材內容裡標示的「圖N」，只填數字 N）填進 based_on_images 陣列；如果這筆用例主要是根據文件文字、或不是針對特定某張截圖，based_on_images 留空陣列即可，不要為了填欄位而硬猜。
+9. 只回傳 JSON 本身。
 """
 
 SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用者以對話方式協作維護一份測試用例清單。
@@ -68,7 +72,8 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
         {"step_no": 1, "description": "操作描述", "expected_result": "預期結果"}
       ],
       "priority": "依重要性判斷的優先級，例如 P0/P1/P2/P3",
-      "notes": "補充備註，例如已知限制、風險或參考說明（若無則留空字串）"
+      "notes": "補充備註，例如已知限制、風險或參考說明（若無則留空字串）",
+      "based_on_images": [1, 3]
     }
   ],
   "clarification_questions": [
@@ -86,63 +91,95 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
    - 沒有回答到的（例如使用者只回答了其中幾個問題、講了不相關的事、或訊息內容答非所問），這個問題必須**原封不動**保留在回傳的 clarification_questions 中再次提出，絕對不可以因為使用者這次沒提到就默默拿掉、當作已解決，也不可以自己編個答案來讓問題消失。
    - 只有當使用者對某個問題明確表示不需要處理時（例如「不管這個」「先跳過」「這個不重要」「不需要」「不用管」），才可以把那個問題從 clarification_questions 移除，並在對應的測試用例中維持原本已知的資訊，不要自行補上答案。
    - 使用者的訊息如果同時包含新的疑慮或指示，除了處理上述判斷之外，也要正常反映在 test_cases 或新的 clarification_questions 上。
-6. 所有文字使用繁體中文。
-7. 任何字串欄位的內容裡都絕對不可以出現半形雙引號 " ——包含舉例、引用畫面文字、陣列/程式碼片段等情況。需要引用或舉例時一律改用全形「」，例如要表達陣列 ["A", "A"] 時要寫成「A、A」或 (A, A)，不可以直接把 " 寫進字串內容，否則會破壞 JSON 格式。
-8. 只回傳 JSON 本身。
+6. 如果訊息中有列出「已鎖定審核」的用例名稱清單，這些用例已經過人工審核確認，絕對不可以修改它們的任何欄位、也不可以刪除或改名；使用者的指示如果會影響到它們，不要直接改，改成在 clarification_questions 提出問題向使用者確認要不要先解鎖。
+7. 每筆測試用例如果是根據前面素材內容裡某幾張截圖寫的，把對應的圖片編號（素材內容裡標示的「圖N」，只填數字 N）填進 based_on_images 陣列；不是針對特定截圖的用例留空陣列即可。新增或修改用例時要重新判斷這個欄位，不要照抄舊值。
+8. 所有文字使用繁體中文。
+9. 任何字串欄位的內容裡都絕對不可以出現半形雙引號 " ——包含舉例、引用畫面文字、陣列/程式碼片段等情況。需要引用或舉例時一律改用全形「」，例如要表達陣列 ["A", "A"] 時要寫成「A、A」或 (A, A)，不可以直接把 " 寫進字串內容，否則會破壞 JSON 格式。
+10. 只回傳 JSON 本身。
 """
 
 
+def _iter_numbered_images(
+    materials: list[ParsedMaterial],
+) -> Iterator[tuple[int, ParsedMaterial, str]]:
+    """依序走訪每個素材會送給模型的圖片（圖片素材的主圖、以及每個素材的附加圖片），
+    配上跨素材連續遞增的編號——不會像之前那樣每個素材各自從 1 開始，同一個 prompt
+    裡才不會出現兩個「圖1」，模型引用時不會有歧義。build_material_content 組 prompt
+    文字、resolve_image_numbers 反查真實圖片網址，都共用這個走訪順序跟編號，兩邊才會
+    永遠對得起來，不用各寫一份重複又容易長歪的走訪邏輯。"""
+    number = 1
+    for material in materials:
+        if material.kind == "image" and material.image_data_url:
+            yield number, material, material.image_data_url
+            number += 1
+        for url in material.embedded_images:
+            yield number, material, url
+            number += 1
+
+
+def resolve_image_numbers(materials: list[ParsedMaterial]) -> list[ImageRef]:
+    """把「圖N」反查回實際素材與網址，供前端把測試用例的 based_on_images 畫成縮圖。"""
+    return [
+        ImageRef(number=number, material_id=material.id, filename=material.filename, url=url)
+        for number, material, url in _iter_numbered_images(materials)
+    ]
+
+
 def build_material_content(materials: list[ParsedMaterial]) -> list[dict]:
+    numbers_by_material: dict[str, list[int]] = {}
+    for number, material, _url in _iter_numbered_images(materials):
+        numbers_by_material.setdefault(material.id, []).append(number)
+
     content: list[dict] = []
     for material in materials:
         label = "檔案" if material.kind == "text" else "圖片"
         header = f"【{label}：{material.filename}】"
         if material.description:
             header += f"\n使用者說明：{material.description}"
+        numbers = numbers_by_material.get(material.id, [])
 
         if material.kind == "text":
             content.append({"type": "text", "text": f"{header}\n{material.text}"})
             if material.embedded_images:
-                # 純文字素材沒有自己的主圖，附加的圖片就從「圖1」開始編號。
+                # 純文字素材沒有自己的主圖，numbers 就是附加圖片各自的編號。
                 content.append(
                     {
                         "type": "text",
                         "text": (
                             f"（以下 {len(material.embedded_images)} 張圖片跟這份素材是同一組，"
-                            "依序編號為圖1、圖2……可能是文件內夾帶的截圖，也可能是使用者額外"
-                            "標記為相關的畫面，請對照上面的文字內容一併理解。如果在測試用例、"
-                            "備註或澄清問題裡需要指出是哪一張，請直接用「圖1」「圖2」這種編號"
-                            "稱呼，不要用「上圖」「下圖」這種畫面上根本沒有編號可以對應的說法）"
+                            f"依序編號為圖{numbers[0]}、圖{numbers[0] + 1}……可能是文件內夾帶的截圖，"
+                            "也可能是使用者額外標記為相關的畫面，請對照上面的文字內容一併理解。"
+                            "如果在測試用例、備註或澄清問題裡需要指出是哪一張，請直接用「圖N」這種"
+                            "編號稱呼，不要用「上圖」「下圖」這種畫面上根本沒有編號可以對應的說法）"
                         ),
                     }
                 )
-                for i, image_url in enumerate(material.embedded_images, start=1):
-                    content.append({"type": "text", "text": f"圖{i}："})
+                for number, image_url in zip(numbers, material.embedded_images):
+                    content.append({"type": "text", "text": f"圖{number}："})
                     content.append({"type": "image_url", "image_url": {"url": image_url}})
         else:
             content.append({"type": "text", "text": header})
             if material.embedded_images:
-                # 有附加圖片時，連同主圖一起從「圖1」開始編號，主圖是圖1、附加圖片
-                # 依序是圖2、圖3……讓模型可以精確指出是哪一張，畫面上的縮圖也會用
-                # 同一套編號，兩邊對得起來。
+                # 有附加圖片時，numbers[0] 是主圖的編號，numbers[1:] 依序是附加圖片。
                 content.append(
                     {
                         "type": "text",
                         "text": (
                             f"（以下共 {len(material.embedded_images) + 1} 張圖片同屬一組，"
-                            "依序編號為圖1、圖2……通常代表同一畫面在不同狀態或操作前後的"
-                            "對照，請對照理解，不要當成互不相關的獨立畫面。如果在測試用例、"
-                            "備註或澄清問題裡需要指出是哪一張，請直接用「圖1」「圖2」這種編號"
+                            f"依序編號為圖{numbers[0]}、圖{numbers[0] + 1}……通常代表同一畫面在不同"
+                            "狀態或操作前後的對照，請對照理解，不要當成互不相關的獨立畫面。如果在"
+                            "測試用例、備註或澄清問題裡需要指出是哪一張，請直接用「圖N」這種編號"
                             "稱呼，不要用「上圖」「下圖」這種畫面上根本沒有編號可以對應的說法）"
                         ),
                     }
                 )
-                content.append({"type": "text", "text": "圖1："})
+                content.append({"type": "text", "text": f"圖{numbers[0]}："})
                 content.append({"type": "image_url", "image_url": {"url": material.image_data_url}})
-                for i, image_url in enumerate(material.embedded_images, start=2):
-                    content.append({"type": "text", "text": f"圖{i}："})
+                for number, image_url in zip(numbers[1:], material.embedded_images):
+                    content.append({"type": "text", "text": f"圖{number}："})
                     content.append({"type": "image_url", "image_url": {"url": image_url}})
             else:
+                content.append({"type": "text", "text": f"圖{numbers[0]}："})
                 content.append({"type": "image_url", "image_url": {"url": material.image_data_url}})
     return content
 
@@ -167,6 +204,19 @@ def build_chat_messages(
         [tc.model_dump() for tc in current_test_cases], ensure_ascii=False
     )
     user_content.append({"type": "text", "text": f"目前的測試用例清單（JSON）：\n{test_cases_json}"})
+
+    locked_names = [tc.name for tc in current_test_cases if tc.locked]
+    if locked_names:
+        user_content.append(
+            {
+                "type": "text",
+                "text": (
+                    "以下用例已鎖定審核，絕對不可以修改或刪除，若使用者的指示會影響到它們，"
+                    "改成在 clarification_questions 提出問題確認：\n"
+                    + "\n".join(f"- {name}" for name in locked_names)
+                ),
+            }
+        )
 
     if pending_questions:
         questions_text = "\n".join(

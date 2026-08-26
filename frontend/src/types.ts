@@ -5,12 +5,22 @@ export interface TestStep {
 }
 
 export interface TestCase {
+  id: string
   name: string
   module: string
   preconditions: string
   steps: TestStep[]
   priority: string
   notes: string
+  locked: boolean
+  based_on_images: number[]
+}
+
+export interface ImageRef {
+  number: number
+  material_id: string
+  filename: string
+  url: string
 }
 
 export interface ClarificationQuestion {

@@ -1,3 +1,4 @@
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -10,12 +11,15 @@ class TestStep(BaseModel):
 
 
 class TestCase(BaseModel):
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     name: str
     module: str = ""
     preconditions: str = ""
     steps: list[TestStep]
     priority: str
     notes: str = ""
+    locked: bool = False
+    based_on_images: list[int] = Field(default_factory=list)
 
 
 class ClarificationQuestion(BaseModel):

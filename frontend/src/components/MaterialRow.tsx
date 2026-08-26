@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UploadedMaterial } from '../types'
-import { ModalOverlay } from './ModalOverlay'
+import { useImageLightbox } from './ImageLightbox'
 
 interface MaterialRowProps {
   material: UploadedMaterial
@@ -38,7 +38,7 @@ export function MaterialRow({
   const [nameBase, setNameBase] = useState(initialBase)
   const [description, setDescription] = useState(material.description)
   const [content, setContent] = useState(material.text ?? '')
-  const [previewSrc, setPreviewSrc] = useState<string | null>(null)
+  const { open: openPreview, lightbox } = useImageLightbox()
 
   // 改名如果因為名稱重複被後端拒絕，material.filename 不會變，這裡要跟著回復顯示，
   // 不能讓輸入框停在使用者剛剛打的（其實沒存成功的）名稱上。
@@ -85,7 +85,7 @@ export function MaterialRow({
               className="material-thumbnail"
               src={material.image_data_url}
               alt={material.filename}
-              onClick={() => setPreviewSrc(material.image_data_url ?? null)}
+              onClick={() => material.image_data_url && openPreview(material.image_data_url, material.filename)}
             />
             {hasGroup && <span className="material-image-number">圖1</span>}
           </span>
@@ -149,7 +149,7 @@ export function MaterialRow({
                 <img
                   src={src}
                   alt={`${material.filename} 內嵌圖片 ${index + 1}`}
-                  onClick={() => setPreviewSrc(src)}
+                  onClick={() => openPreview(src, `${material.filename} 內嵌圖片 ${index + 1}`)}
                 />
                 {onUngroupImage && (
                   <button
@@ -170,17 +170,7 @@ export function MaterialRow({
           </div>
         </div>
       )}
-      {previewSrc && (
-        <ModalOverlay onClose={() => setPreviewSrc(null)} panelClassName="material-thumbnail-preview">
-          <div className="modal-header">
-            <h2>{material.filename}</h2>
-            <button className="secondary" onClick={() => setPreviewSrc(null)}>
-              關閉
-            </button>
-          </div>
-          <img src={previewSrc} alt={material.filename} />
-        </ModalOverlay>
-      )}
+      {lightbox}
     </li>
   )
 }

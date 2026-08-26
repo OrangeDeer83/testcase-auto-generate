@@ -31,6 +31,12 @@ export function FloatingChat({ log, busy, onSend }: FloatingChatProps) {
     if (open) setUnread(0)
   }, [open])
 
+  // 最後一則如果是 AI 提出、使用者還沒回應的問題，收合狀態下的圓形按鈕本身也要閃爍——
+  // 不然使用者要先點開才看得到 ChatPanel 裡的閃爍提示，等於根本沒被提醒到。
+  const lastEntry = log[log.length - 1]
+  const hasUnansweredQuestion =
+    lastEntry?.role === 'assistant' && (lastEntry.questions?.length ?? 0) > 0
+
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault()
     resizeStartRef.current = { x: e.clientX, y: e.clientY, width: size.width, height: size.height }
@@ -56,7 +62,12 @@ export function FloatingChat({ log, busy, onSend }: FloatingChatProps) {
 
   if (!open) {
     return (
-      <button type="button" className="chat-fab" onClick={() => setOpen(true)} title="測試用例助手">
+      <button
+        type="button"
+        className={`chat-fab${hasUnansweredQuestion ? ' chat-fab-blink' : ''}`}
+        onClick={() => setOpen(true)}
+        title={hasUnansweredQuestion ? '測試用例助手（有未回答的問題）' : '測試用例助手'}
+      >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
           <path d="M21 11.5a8.4 8.4 0 01-8.5 8.4 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8A8.5 8.5 0 0112.5 3h.5a8.5 8.5 0 018 8v.5z" />
         </svg>
