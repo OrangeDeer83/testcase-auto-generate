@@ -1372,6 +1372,12 @@ button.secondary:hover:not(:disabled) {
   box-shadow: none;
 }
 
+.chat-bubble-hint {
+  margin-top: 4px;
+  font-size: 0.74rem;
+  color: var(--color-text-faint);
+}
+
 .chat-bubble.answer {
   background: var(--color-primary);
   color: #fff;
