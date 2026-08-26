@@ -16,13 +16,25 @@ import type {
 // 或前後端根本不在同一台主機，就要在 .env 裡明確設定 VITE_API_BASE_URL 覆蓋這個推斷值。
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? `http://${window.location.hostname}:8000`
 
+export interface ApiError extends Error {
+  status?: number
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }))
-    throw new Error(body.detail ?? `請求失敗（${response.status}）`)
+    const error: ApiError = new Error(body.detail ?? `請求失敗（${response.status}）`)
+    error.status = response.status
+    throw error
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
+}
+
+// PUT /test-cases 遇到版本衝突（這個對話的測試用例已經在別的分頁被改過）時，
+// 後端回 409——用這個判斷式讓呼叫端把「衝突」跟其他真正的錯誤分開處理。
+export function isConflictError(err: unknown): boolean {
+  return err instanceof Error && (err as ApiError).status === 409
 }
 
 // ---- snake_case (後端) <-> camelCase（前端）轉換 ----

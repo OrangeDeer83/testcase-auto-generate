@@ -14,7 +14,12 @@ from app.services.prompt_builder import (
     parse_generation_result,
     resolve_image_numbers,
 )
-from app.services.test_case_lock import enforce_lock_on_llm_result, enforce_lock_on_manual_edit
+from app.services.test_case_lock import (
+    VersionConflictError,
+    check_result_version,
+    enforce_lock_on_llm_result,
+    enforce_lock_on_manual_edit,
+)
 
 router = APIRouter(prefix="/api/projects/{project_id}/conversations", tags=["conversations"])
 
@@ -126,7 +131,9 @@ def generate(project_id: str, conversation_id: str):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+    previous_version = conversation.last_result.result_version if conversation.last_result else 0
     result = enforce_lock_on_llm_result(previous_cases, result)
+    result.result_version = previous_version + 1
     conversation.last_result = result
     conversation_store.save_conversation(project_id, conversation)
     logger.info(
@@ -187,7 +194,9 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+    previous_version = conversation.last_result.result_version if conversation.last_result else 0
     result = enforce_lock_on_llm_result(previous_cases, result)
+    result.result_version = previous_version + 1
     conversation.last_result = result
     conversation.llm_history.append(
         ChatMessage(role="assistant", content=_summarize_for_history(result))
@@ -213,7 +222,16 @@ def update_test_cases(project_id: str, conversation_id: str, payload: Generation
     _get_project_or_404(project_id)
     conversation = _get_conversation_or_404(project_id, conversation_id)
     previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+    previous_version = conversation.last_result.result_version if conversation.last_result else 0
+    try:
+        check_result_version(previous_version, payload.result_version)
+    except VersionConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="這個對話的測試用例已經在別的分頁被修改過，請重新整理後再繼續編輯。",
+        ) from exc
     payload.test_cases = enforce_lock_on_manual_edit(previous_cases, payload.test_cases)
+    payload.result_version = previous_version + 1
     conversation.last_result = payload
     conversation_store.save_conversation(project_id, conversation)
     return payload

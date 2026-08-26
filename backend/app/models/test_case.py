@@ -31,6 +31,7 @@ class ClarificationQuestion(BaseModel):
 class GenerationResult(BaseModel):
     test_cases: list[TestCase] = Field(default_factory=list)
     clarification_questions: list[ClarificationQuestion] = Field(default_factory=list)
+    result_version: int = 0
 
 
 class ChatMessage(BaseModel):

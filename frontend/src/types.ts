@@ -32,6 +32,7 @@ export interface ClarificationQuestion {
 export interface GenerationResult {
   test_cases: TestCase[]
   clarification_questions: ClarificationQuestion[]
+  result_version: number
 }
 
 export interface ChatMessage {
