@@ -1,5 +1,12 @@
+import pytest
+
 from app.models.test_case import ClarificationQuestion, GenerationResult, TestCase, TestStep
-from app.services.test_case_lock import enforce_lock_on_llm_result, enforce_lock_on_manual_edit
+from app.services.test_case_lock import (
+    VersionConflictError,
+    check_result_version,
+    enforce_lock_on_llm_result,
+    enforce_lock_on_manual_edit,
+)
 
 
 def _case(name="用例A", locked=False, step_desc="步驟一", **kwargs) -> TestCase:
@@ -93,3 +100,12 @@ def test_llm_result_preserves_existing_questions() -> None:
     final = enforce_lock_on_llm_result([], result)
 
     assert final.clarification_questions == [existing_question]
+
+
+def test_check_result_version_matching_passes() -> None:
+    check_result_version(previous_version=3, base_version=3)
+
+
+def test_check_result_version_mismatch_raises() -> None:
+    with pytest.raises(VersionConflictError):
+        check_result_version(previous_version=3, base_version=2)

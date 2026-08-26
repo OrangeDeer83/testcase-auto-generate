@@ -16,6 +16,19 @@ def _same_content(a: TestCase, b: TestCase) -> bool:
     return a.model_dump(exclude=ignore) == b.model_dump(exclude=ignore)
 
 
+class VersionConflictError(Exception):
+    """整批覆寫測試用例（PUT /test-cases）時，client 送來的 base 版本跟伺服器目前
+    版本對不上——代表這個分頁看到的是過期的快照（例如同一個對話被另一個分頁改過），
+    直接接受會用舊資料悄悄蓋掉別人剛存的東西。"""
+
+
+def check_result_version(previous_version: int, base_version: int) -> None:
+    if base_version != previous_version:
+        raise VersionConflictError(
+            f"版本不符：目前版本 {previous_version}，收到的版本 {base_version}"
+        )
+
+
 def enforce_lock_on_manual_edit(
     previous: list[TestCase], incoming: list[TestCase]
 ) -> list[TestCase]:

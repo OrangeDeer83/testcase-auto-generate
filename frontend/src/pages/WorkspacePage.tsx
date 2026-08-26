@@ -8,6 +8,7 @@ import {
   getConversation,
   getImageMap,
   getMaterials,
+  isConflictError,
   mergeMaterials,
   sendChatMessage,
   saveChatLog,
@@ -25,7 +26,7 @@ import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTes
 import type { ShellContext } from './ProjectLayout'
 import type { ChatMessage, GenerationResult, ImageRef, UploadedMaterial } from '../types'
 
-const EMPTY_RESULT: GenerationResult = { test_cases: [], clarification_questions: [] }
+const EMPTY_RESULT: GenerationResult = { test_cases: [], clarification_questions: [], result_version: 0 }
 
 interface WorkspaceNotice {
   message: string
@@ -133,6 +134,20 @@ export function WorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, conversationId])
 
+  // 存檔基準版本（result_version）跟伺服器目前版本對不上時，代表這個分頁看到的
+  // 是過期快照（例如同一個對話被另一個分頁改過），後端會擋下（409）不讓覆蓋。
+  // 這種情況下把最新內容重新抓回來蓋掉本地這份過期狀態，並提示使用者——比起
+  // 讓使用者的編輯內容默默生效、或默默消失，誠實告知「已經被別人改過」更安全。
+  const reloadResultAfterConflict = async (pid: string, cid: string) => {
+    try {
+      const conversation = await getConversation(pid, cid)
+      skipNextAutosaveRef.current = true
+      setResult(conversation.lastResult ?? EMPTY_RESULT)
+    } catch {
+      // 重新載入也失敗就算了，至少已經擋下了這次會覆蓋掉別人修改的存檔
+    }
+  }
+
   // 使用者在表格裡手動編輯（新增/刪除步驟或用例、改欄位文字）只會更新這裡的
   // React 狀態，不會自動存回後端——後端真正落地寫檔只發生在送出聊天訊息、
   // 或按下匯出的當下。這個 effect 補上「手動編輯也要存檔」：debounce 一段時間
@@ -144,9 +159,19 @@ export function WorkspacePage() {
       return
     }
     const timer = setTimeout(() => {
-      updateTestCases(projectId, conversationId, result).catch((err) => {
-        setError(err instanceof Error ? err.message : '自動儲存測試用例失敗')
-      })
+      updateTestCases(projectId, conversationId, result)
+        .then((saved) => {
+          skipNextAutosaveRef.current = true
+          setResult((prev) => ({ ...prev, result_version: saved.result_version }))
+        })
+        .catch(async (err) => {
+          if (isConflictError(err)) {
+            await reloadResultAfterConflict(projectId, conversationId)
+            setError('這個對話的測試用例已經在別的分頁被修改過，已為您載入最新內容，剛才的編輯請重新確認並套用一次')
+            return
+          }
+          setError(err instanceof Error ? err.message : '自動儲存測試用例失敗')
+        })
     }, 1000)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -408,7 +433,12 @@ export function WorkspacePage() {
       link.remove()
       URL.revokeObjectURL(url)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '匯出失敗')
+      if (isConflictError(err)) {
+        await reloadResultAfterConflict(projectId, conversationId)
+        setError('這個對話的測試用例已經在別的分頁被修改過，已為您載入最新內容，請確認鎖定狀態後再匯出一次')
+      } else {
+        setError(err instanceof Error ? err.message : '匯出失敗')
+      }
     } finally {
       setExporting(false)
     }
