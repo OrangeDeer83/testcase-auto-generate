@@ -446,6 +446,19 @@ export function WorkspacePage() {
           onBlur={(e) => commitRename(e.target.value)}
         />
         <span className="subtitle workspace-count">共 {result.test_cases.length} 筆用例</span>
+        {lockBlockNotice && (
+          <div className="workspace-lock-notice" title="還有測試用例尚未鎖定審核，已為您跳到第一筆未鎖定的用例——鎖定後這則提示會自動消失">
+            <span>還有用例尚未鎖定審核，已跳到第一筆未鎖定的用例</span>
+            <button
+              type="button"
+              className="lock-block-notice-close"
+              title="關閉提示"
+              onClick={() => setLockBlockNotice(null)}
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <div className="workspace-actions">
           <button className="secondary" onClick={() => setShowMaterials(true)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1c2733" strokeWidth="2">
@@ -467,20 +480,6 @@ export function WorkspacePage() {
           </button>
         </div>
       </div>
-
-      {lockBlockNotice && (
-        <div className="lock-block-notice">
-          <span>還有測試用例尚未鎖定審核，已為您跳到第一筆未鎖定的用例——鎖定後這則提示會自動消失</span>
-          <button
-            type="button"
-            className="lock-block-notice-close"
-            title="關閉提示"
-            onClick={() => setLockBlockNotice(null)}
-          >
-            ✕
-          </button>
-        </div>
-      )}
 
       <div className="workspace-cases-scroll">
         <TestCaseTable
