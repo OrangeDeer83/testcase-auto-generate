@@ -93,6 +93,10 @@ export function TestCaseTable({
 
   const [dragInfo, setDragInfo] = useState<DragInfo | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  // 用例整筆拖曳排序跟步驟拖曳是各自獨立的一組狀態——鎖定只保護內容，不保護順序，
+  // 所以這裡不看 locked，任何一筆用例（不管鎖定與否）都可以拖動調整順序。
+  const [caseDragIndex, setCaseDragIndex] = useState<number | null>(null)
+  const [caseDragOverIndex, setCaseDragOverIndex] = useState<number | null>(null)
   const [expandedIndices, setExpandedIndices] = useState<Set<number>>(
     () => new Set(testCases.length <= 2 ? testCases.map((_, i) => i) : []),
   )
@@ -190,6 +194,14 @@ export function TestCaseTable({
     onChange([...testCases, emptyCase()])
   }
 
+  const reorderCases = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+    const next = testCases.slice()
+    const [moved] = next.splice(fromIndex, 1)
+    next.splice(toIndex, 0, moved)
+    onChange(next)
+  }
+
   const removeCase = (caseIndex: number) => {
     if (!window.confirm(`確定要刪除「${testCases[caseIndex].name || '（未命名用例）'}」這筆測試用例嗎？無法復原。`)) {
       return
@@ -203,14 +215,55 @@ export function TestCaseTable({
         const expanded = expandedIndices.has(caseIndex)
         const stepCount = testCase.steps.length
         const locked = testCase.locked
+        const isCaseDragging = caseDragIndex === caseIndex
+        const isCaseDragOver = caseDragOverIndex === caseIndex && caseDragIndex !== caseIndex
         return (
         <div
           id={`field-case:${caseIndex}`}
-          className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}${expanded ? '' : ' case-card-collapsed'}${locked ? ' case-card-locked' : ''}`}
+          className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}${expanded ? '' : ' case-card-collapsed'}${locked ? ' case-card-locked' : ''}${isCaseDragging ? ' case-dragging' : ''}${isCaseDragOver ? ' case-drag-over' : ''}`}
           key={caseIndex}
+          onDragOver={(e) => {
+            if (caseDragIndex == null) return
+            e.preventDefault()
+            if (caseDragOverIndex !== caseIndex) setCaseDragOverIndex(caseIndex)
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            if (caseDragIndex != null) {
+              reorderCases(caseDragIndex, caseIndex)
+            }
+            setCaseDragIndex(null)
+            setCaseDragOverIndex(null)
+          }}
         >
           <span className="case-number">{caseIndex + 1}</span>
           <div className="case-card-header" onClick={() => toggleExpanded(caseIndex)}>
+            {testCases.length > 1 && (
+              <span
+                className="case-drag-grip"
+                aria-hidden="true"
+                title="拖曳調整用例順序"
+                draggable
+                onClick={(e) => e.stopPropagation()}
+                onDragStart={(e) => {
+                  e.stopPropagation()
+                  setCaseDragIndex(caseIndex)
+                }}
+                onDragEnd={() => {
+                  setCaseDragIndex(null)
+                  setCaseDragOverIndex(null)
+                }}
+              >
+                <svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor">
+                  <circle cx="2" cy="2" r="1.3" />
+                  <circle cx="6" cy="2" r="1.3" />
+                  <circle cx="2" cy="7" r="1.3" />
+                  <circle cx="6" cy="7" r="1.3" />
+                  <circle cx="2" cy="12" r="1.3" />
+                  <circle cx="6" cy="12" r="1.3" />
+                </svg>
+              </span>
+            )}
             {expanded && !locked ? (
               <input
                 className="name-input"
