@@ -27,6 +27,12 @@ import type { ChatMessage, GenerationResult, ImageRef, UploadedMaterial } from '
 
 const EMPTY_RESULT: GenerationResult = { test_cases: [], clarification_questions: [] }
 
+interface WorkspaceNotice {
+  message: string
+  focusIndex?: number
+  focusToken?: number
+}
+
 function newId(): string {
   return crypto.randomUUID()
 }
@@ -77,22 +83,31 @@ export function WorkspacePage() {
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
   const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
   const [showMaterials, setShowMaterials] = useState(false)
-  // 匯出被「還有用例未鎖定」擋下時的提示狀態，跟通用的 error-banner 分開處理——
-  // 這個提示要能在使用者鎖定該筆用例後自動消失，不能像一般錯誤訊息那樣停在畫面上
-  // 不會自己消失。token 每次擋下都遞增：就算連續兩次擋下剛好指向同一筆（index 沒變），
-  // 也要能重新觸發 TestCaseTable 裡的捲動/展開，不能因為 index 值沒變就不生效。
-  const [lockBlockNotice, setLockBlockNotice] = useState<{ index: number; token: number } | null>(
-    null,
-  )
-  const lockBlockTokenRef = useRef(0)
+  // 匯出時的兩種非阻斷／半阻斷提示（還有用例未鎖定、還有問題未回答）共用同一個狀態、
+  // 同一個畫面位置（標題列，跟 error-banner 分開，不會借用通用錯誤狀態）——這樣才能
+  // 讓兩者都自動消失：一旦當初觸發的條件不再成立（該用例鎖定了／該問題有新訊息了），
+  // 就不用使用者自己意識到要手動關掉。focusIndex/focusToken 只有「還有用例未鎖定」
+  // 這種需要捲動跳轉的提示才會帶；token 每次擋下都遞增，避免連續兩次剛好指向同一筆
+  // （index 沒變）時，因為值沒變化而不會重新觸發 TestCaseTable 裡的捲動/展開。
+  const [workspaceNotice, setWorkspaceNotice] = useState<WorkspaceNotice | null>(null)
+  const focusTokenRef = useRef(0)
   const [imageMap, setImageMap] = useState<Map<number, ImageRef>>(new Map())
 
   useEffect(() => {
-    if (lockBlockNotice == null) return
-    if (result.test_cases[lockBlockNotice.index]?.locked || result.test_cases.every((tc) => tc.locked)) {
-      setLockBlockNotice(null)
+    if (!workspaceNotice) return
+    if (workspaceNotice.focusIndex != null) {
+      if (
+        result.test_cases[workspaceNotice.focusIndex]?.locked ||
+        result.test_cases.every((tc) => tc.locked)
+      ) {
+        setWorkspaceNotice(null)
+      }
+      return
     }
-  }, [result, lockBlockNotice])
+    const lastEntry = chatLog[chatLog.length - 1]
+    const hasUnanswered = lastEntry?.role === 'assistant' && (lastEntry.questions?.length ?? 0) > 0
+    if (!hasUnanswered) setWorkspaceNotice(null)
+  }, [result, chatLog, workspaceNotice])
 
   useEffect(() => {
     if (!projectId || !conversationId) return
@@ -366,8 +381,12 @@ export function WorkspacePage() {
   const handleExport = async () => {
     const firstUnlockedIndex = result.test_cases.findIndex((tc) => !tc.locked)
     if (firstUnlockedIndex !== -1) {
-      lockBlockTokenRef.current += 1
-      setLockBlockNotice({ index: firstUnlockedIndex, token: lockBlockTokenRef.current })
+      focusTokenRef.current += 1
+      setWorkspaceNotice({
+        message: '⚠️ 有用例未鎖定',
+        focusIndex: firstUnlockedIndex,
+        focusToken: focusTokenRef.current,
+      })
       return
     }
 
@@ -376,7 +395,7 @@ export function WorkspacePage() {
     try {
       const lastEntry = chatLog[chatLog.length - 1]
       if (lastEntry?.role === 'assistant' && (lastEntry.questions?.length ?? 0) > 0) {
-        setError('⚠️ 目前有尚未回答的澄清問題，建議確認後再匯出（本次仍會照常匯出）')
+        setWorkspaceNotice({ message: '⚠️ 有問題未回答' })
       }
       await updateTestCases(projectId, conversationId, result)
       const blob = await exportExcel(projectId, conversationId)
@@ -446,14 +465,21 @@ export function WorkspacePage() {
           onBlur={(e) => commitRename(e.target.value)}
         />
         <span className="subtitle workspace-count">共 {result.test_cases.length} 筆用例</span>
-        {lockBlockNotice && (
-          <div className="workspace-lock-notice" title="還有測試用例尚未鎖定審核，已為您跳到第一筆未鎖定的用例——鎖定後這則提示會自動消失">
-            <span>還有用例尚未鎖定審核，已跳到第一筆未鎖定的用例</span>
+        {workspaceNotice && (
+          <div
+            className="workspace-notice"
+            title={
+              workspaceNotice.focusIndex != null
+                ? '還有測試用例尚未鎖定審核，已為您跳到第一筆未鎖定的用例——鎖定後這則提示會自動消失'
+                : '目前有尚未回答的澄清問題，建議確認後再匯出（本次仍會照常匯出）'
+            }
+          >
+            <span>{workspaceNotice.message}</span>
             <button
               type="button"
-              className="lock-block-notice-close"
+              className="workspace-notice-close"
               title="關閉提示"
-              onClick={() => setLockBlockNotice(null)}
+              onClick={() => setWorkspaceNotice(null)}
             >
               ✕
             </button>
@@ -488,8 +514,8 @@ export function WorkspacePage() {
           highlightedKeys={highlightedKeys}
           previousValues={previousValues}
           onFieldFocus={clearHighlight}
-          focusCaseIndex={lockBlockNotice?.index ?? null}
-          focusToken={lockBlockNotice?.token}
+          focusCaseIndex={workspaceNotice?.focusIndex ?? null}
+          focusToken={workspaceNotice?.focusToken}
           imageMap={imageMap}
         />
       </div>
