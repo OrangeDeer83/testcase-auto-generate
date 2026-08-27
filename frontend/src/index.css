@@ -820,8 +820,44 @@ h2 {
   pointer-events: none;
 }
 
+.material-thumbnail-preview {
+  max-width: min(1100px, 92vw);
+}
+
+.image-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.image-preview-toolbar button {
+  width: 30px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.image-preview-zoom-level {
+  min-width: 42px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.image-preview-scroll {
+  overflow: auto;
+  max-height: 75vh;
+  /* 特意不用 flex + justify-content: center 讓圖片置中——瀏覽器對「置中對齊的
+     flex/grid 子項目溢出容器」這種情況的捲動範圍計算有名的怪癖，開始端會被裁掉、
+     根本捲不到，放大後反而看不到超出去的部分。改用 text-align 置中一般的行內
+     內容，溢出時才不會有這個問題，兩側都能正常捲動看到。 */
+  text-align: center;
+}
+
 .material-thumbnail-preview img {
-  max-width: 100%;
   border-radius: var(--radius-sm);
 }
 
