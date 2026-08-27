@@ -2,6 +2,18 @@
 
 > 記錄每次修 bug／改善 UX 時「為什麼壞掉、怎麼修好的、背後用到什麼可以遷移到其他情境的觀念」，主要是寫給使用者看的學習筆記，也順便讓之後回頭查、或下一個接手的 Claude 不用重新翻一次 diff 才搞懂修法。跟 [PROGRESS.md](PROGRESS.md) 的差異：PROGRESS.md 是變更歷史總覽（做了什麼），這份專注在單一問題的根因、修法、與原理本身。維護方式見 `.claude/skills/fix-notes/SKILL.md`。
 
+## 2026-08-27 開放區網 IP 連線後，同事那邊跳出「crypto.randomUUID is not a function」
+
+**問題**：把後端 CORS 白名單加開一個區網 IP、讓同事能用 `http://10.197.177.13:5173` 連進來用之後，同事那邊操作到一半跳出 `crypto.randomUUID is not a function`。追查發現前端有三處直接呼叫瀏覽器原生的 `crypto.randomUUID()` 產生本地識別碼（`WorkspacePage.tsx` 的聊天訊息 id、`TestCaseTable.tsx` 新增用例時的 `emptyCase()`）。這個方法屬於瀏覽器的 Web Crypto API，規格明定**只在「安全情境」（secure context）才會出現在 `crypto` 物件上**——安全情境的定義是 HTTPS，或是 `localhost`／`127.0.0.1` 這種本機位址。同事是用純 HTTP 透過區網 IP（不是 localhost、也不是 HTTPS）連進來，瀏覽器判定這不是安全情境，直接讓 `crypto.randomUUID` 從物件上消失，呼叫就變成呼叫一個不存在的方法。我自己用 localhost 連測試環境時完全不會遇到，因為 localhost 永遠算安全情境，這也是這個 bug 直到真的開放給別人用才被發現的原因。
+
+**修法**：新增 `frontend/src/id.ts`，把「產生本地識別碼」包成一個 `newId()` 函式——先試 `crypto.randomUUID`，方法不存在時退回一個用 `Math.random()` 拼出來的簡易 UUID v4 格式字串當備援。這些 id 只是用來當 React 的 `key`、或標記聊天訊息／草稿用例這種純前端本地資料，從來不會送進任何需要密碼學等級隨機性的地方（例如權杖、密碼），所以備援方案不需要跟原生方法一樣安全，只要「夠不會撞號」就符合這裡的實際需求。`WorkspacePage.tsx`、`TestCaseTable.tsx` 兩處原本直接呼叫 `crypto.randomUUID()` 的地方都改成呼叫這個共用函式。
+
+**背後的通用觀念**：**瀏覽器有一整類 API 只在「安全情境」下才存在**（Web Crypto 的部分方法、Clipboard API、Geolocation、Service Worker 等等），這個限制是瀏覽器規格本身刻意設計的，不是某個瀏覽器的 bug 或設定問題。安全情境的判斷不是看「連線有沒有加密」這麼單純，而是看**協定＋主機**的組合：`https://` 任何網域都算、`http://localhost`／`http://127.0.0.1` 也算（因為封包從沒真的離開這台機器，沒有中間人竊聽的風險），但 `http://` 加任何區網 IP 或網域一律不算——即使是同一個內網、即使實際上很安全。這造成一個很容易踩到的陷阱：**開發時幾乎必然用 `localhost` 測試，天生就是安全情境，這類 API 永遠正常；一旦部署到別的網址（哪怕只是同事用區網 IP 連你電腦上跑的 dev server），同一段程式碼就可能突然壞掉**——而且不是編譯期或型別檢查抓得到的錯誤，因為 TypeScript 看不出「這個方法在執行當下的網址情境下存不存在」，只有真的用非 localhost 的位址在瀏覽器裡跑過一次才會發現。這也是為什麼「這個功能已經測過沒問題」這句話要小心——測試環境（localhost）跟正式使用情境（別人從別的網址連進來）的安全情境可能不一樣，光是自己用 localhost 反覆測試無法保證涵蓋到這種差異。日後任何用到只在安全情境才有的瀏覽器 API 時，值得先確認呼叫的地方是不是核心功能路徑，是的話就該準備一個不依賴該情境的備援，而不是預設使用者一定是用 localhost 或 HTTPS 連進來。
+
+**檔案**：新增 `frontend/src/id.ts`；改用它的 `frontend/src/pages/WorkspacePage.tsx`、`frontend/src/components/TestCaseTable.tsx`
+
+**驗證方式**：`npx tsc --noEmit`、`npx vitest run`（12 個測試全過）、`cd e2e && npm test`（golden-path 全流程通過）。瀏覽器實測（dev 環境 5175）：用 JS 把 `window.crypto.randomUUID` 覆寫成 `undefined`，模擬「非安全情境」瀏覽器的實際狀況，接著在畫面上點「新增測試用例」（觸發 `emptyCase()`）與送出一則聊天訊息（觸發 `newId()`），確認兩個操作都正常完成、畫面正確顯示新增的用例與訊息，且 console 沒有任何錯誤——修好之前，同一組操作在覆寫 `randomUUID` 之後會直接跳出 `crypto.randomUUID is not a function` 並讓整個對話頁面白屏。
+
 ## 2026-08-26 兩個分頁同時開同一個對話，會互相覆蓋掉對方的修改
 
 **問題**：使用者提問「如果兩個瀏覽器都開啟同一個對話，一個顯示鎖定一個顯示未鎖定，會發生什麼事？」。實際追查程式碼後確認：`PUT /test-cases`（表格任何欄位編輯後 1 秒 debounce 自動存檔的那個 API）是整包陣列覆寫——`conversation.last_result = payload`，直接用瀏覽器送來的整份測試用例清單蓋掉伺服器上的版本，中間完全沒有版本號或時間戳記比對。假設分頁 A 剛把某筆用例鎖定存檔成功，分頁 B 因為還沒重新整理，記憶體裡的快照仍是鎖定之前的樣子；只要 B 之後做了任何觸發自動存檔的編輯（不需要是同一筆用例），B 就會把整包過期快照存回去——`enforce_lock_on_manual_edit` 只保護「舊版有鎖、新版也有鎖」這種情況，B 送來的是「新版沒鎖」，會被判定成「使用者主動解鎖」而直接接受，等於悄悄蓋掉 A 剛做的鎖定，而且兩邊都不會跳出任何錯誤或警告。範圍其實比鎖定欄位更大：因為是整包覆寫，A 對其他未鎖定用例做的修改，只要不巧被 B 的過期快照覆蓋，也會一起消失。

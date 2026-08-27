@@ -23,6 +23,7 @@ import { MaterialSelector } from '../components/MaterialSelector'
 import { MaterialsModal } from '../components/MaterialsModal'
 import { TestCaseTable } from '../components/TestCaseTable'
 import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
+import { newId } from '../id'
 import type { ShellContext } from './ProjectLayout'
 import type { ChatMessage, GenerationResult, ImageRef, UploadedMaterial } from '../types'
 
@@ -32,10 +33,6 @@ interface WorkspaceNotice {
   message: string
   focusIndex?: number
   focusToken?: number
-}
-
-function newId(): string {
-  return crypto.randomUUID()
 }
 
 function describeResult(result: GenerationResult): ChatMessage[] {
