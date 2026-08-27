@@ -4,6 +4,7 @@ import type { MouseEvent, ReactNode } from 'react'
 interface ModalOverlayProps {
   onClose: () => void
   panelClassName?: string
+  overlayClassName?: string
   children: ReactNode
 }
 
@@ -15,12 +16,12 @@ interface ModalOverlayProps {
  * 兩者的最近共同祖先（也就是遮罩），跟真正點擊遮罩沒有兩樣，會誤觸關閉。因此改成記錄
  * mousedown 當下是否真的按在遮罩本身，只有這樣才視為使用者想點擊外部關閉。
  */
-export function ModalOverlay({ onClose, panelClassName, children }: ModalOverlayProps) {
+export function ModalOverlay({ onClose, panelClassName, overlayClassName, children }: ModalOverlayProps) {
   const mouseDownOnOverlay = useRef(false)
 
   return (
     <div
-      className="modal-overlay"
+      className={overlayClassName ? `modal-overlay ${overlayClassName}` : 'modal-overlay'}
       onMouseDown={(e: MouseEvent<HTMLDivElement>) => {
         mouseDownOnOverlay.current = e.target === e.currentTarget
       }}
