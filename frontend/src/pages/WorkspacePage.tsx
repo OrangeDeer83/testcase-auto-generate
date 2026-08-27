@@ -23,6 +23,7 @@ import { MaterialSelector } from '../components/MaterialSelector'
 import { MaterialsModal } from '../components/MaterialsModal'
 import { TestCaseTable } from '../components/TestCaseTable'
 import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
+import { useDuplicateTabWarning } from '../useDuplicateTabWarning'
 import type { ShellContext } from './ProjectLayout'
 import type { ChatMessage, GenerationResult, ImageRef, UploadedMaterial } from '../types'
 
@@ -65,6 +66,7 @@ function hydrateChatLog(chatLog: ChatMessage[], materials: UploadedMaterial[]): 
 export function WorkspacePage() {
   const { conversationId } = useParams<{ conversationId: string }>()
   const { projectId, materials, refreshShell, setError } = useOutletContext<ShellContext>()
+  const hasDuplicateTab = useDuplicateTabWarning(conversationId)
 
   const [conversationName, setConversationName] = useState('')
   // conversationName 是輸入框當下顯示的值，每次打字 onChange 都會同步更新；
@@ -458,6 +460,11 @@ export function WorkspacePage() {
             onChange={(e) => setConversationName(e.target.value)}
             onBlur={(e) => commitRename(e.target.value)}
           />
+          {hasDuplicateTab && (
+            <div className="workspace-duplicate-tab-warning" title="同一個對話同時開著多個分頁，編輯時容易互相蓋掉對方的修改，建議只留一個分頁操作">
+              ⚠️ 有其他分頁開著
+            </div>
+          )}
         </div>
         <h2>選擇要使用的素材</h2>
         <p className="subtitle">
@@ -495,6 +502,11 @@ export function WorkspacePage() {
           onBlur={(e) => commitRename(e.target.value)}
         />
         <span className="subtitle workspace-count">共 {result.test_cases.length} 筆用例</span>
+        {hasDuplicateTab && (
+          <div className="workspace-duplicate-tab-warning" title="同一個對話同時開著多個分頁，編輯時容易互相蓋掉對方的修改，建議只留一個分頁操作">
+            ⚠️ 有其他分頁開著
+          </div>
+        )}
         {workspaceNotice && (
           <div
             className="workspace-notice"

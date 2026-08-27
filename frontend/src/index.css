@@ -1281,6 +1281,26 @@ button.secondary:hover:not(:disabled) {
   transform: none;
 }
 
+.workspace-duplicate-tab-warning {
+  flex: 0 1 auto;
+  max-width: 220px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #fdeaea;
+  color: #a12a2a;
+  border: 1px solid #e7a5a5;
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
 .chat-log {
   display: flex;
   flex-direction: column;
