@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useImageLightbox } from './ImageLightbox'
+import { newId } from '../id'
 import type { ImageRef, TestCase, TestStep } from '../types'
 
 interface DragInfo {
@@ -64,7 +65,7 @@ function emptyStep(stepNo: number): TestStep {
 
 function emptyCase(): TestCase {
   return {
-    id: crypto.randomUUID(),
+    id: newId(),
     name: '新測試用例',
     module: '',
     preconditions: '',
