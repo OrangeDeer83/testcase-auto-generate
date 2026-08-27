@@ -1301,6 +1301,32 @@ button.secondary:hover:not(:disabled) {
   cursor: default;
 }
 
+@keyframes conflict-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.conflict-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  background: rgba(28, 39, 51, 0.94);
+  color: #fff;
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  box-shadow: var(--shadow-md);
+  z-index: 60;
+  animation: conflict-toast-in 0.2s ease;
+}
+
 .chat-log {
   display: flex;
   flex-direction: column;

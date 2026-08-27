@@ -95,6 +95,16 @@ export function WorkspacePage() {
   const [workspaceNotice, setWorkspaceNotice] = useState<WorkspaceNotice | null>(null)
   const focusTokenRef = useRef(0)
   const [imageMap, setImageMap] = useState<Map<number, ImageRef>>(new Map())
+  // 版本衝突（被別的分頁搶先存檔）發生時的提示——現在已經有分頁警示徽章事先
+  // 提醒過使用者了，這裡不用再用會一直卡在畫面上、要手動關掉的通用錯誤橫幅，
+  // 改成幾秒後自動消失的輕量 toast。
+  const [conflictToast, setConflictToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!conflictToast) return
+    const timer = setTimeout(() => setConflictToast(null), 4000)
+    return () => clearTimeout(timer)
+  }, [conflictToast])
 
   useEffect(() => {
     if (!workspaceNotice) return
@@ -169,7 +179,7 @@ export function WorkspacePage() {
         .catch(async (err) => {
           if (isConflictError(err)) {
             await reloadResultAfterConflict(projectId, conversationId)
-            setError('這個對話的測試用例已經在別的分頁被修改過，已為您載入最新內容，剛才的編輯請重新確認並套用一次')
+            setConflictToast('已載入其他分頁的最新內容，剛才的編輯請重新套用一次')
             return
           }
           setError(err instanceof Error ? err.message : '自動儲存測試用例失敗')
@@ -437,7 +447,7 @@ export function WorkspacePage() {
     } catch (err) {
       if (isConflictError(err)) {
         await reloadResultAfterConflict(projectId, conversationId)
-        setError('這個對話的測試用例已經在別的分頁被修改過，已為您載入最新內容，請確認鎖定狀態後再匯出一次')
+        setConflictToast('已載入其他分頁的最新內容，請確認鎖定狀態後再匯出一次')
       } else {
         setError(err instanceof Error ? err.message : '匯出失敗')
       }
@@ -461,7 +471,7 @@ export function WorkspacePage() {
             onBlur={(e) => commitRename(e.target.value)}
           />
           {hasDuplicateTab && (
-            <div className="workspace-duplicate-tab-warning" title="同一個對話同時開著多個分頁，編輯時容易互相蓋掉對方的修改，建議只留一個分頁操作">
+            <div className="workspace-duplicate-tab-warning" title="同一個對話同時開著多個分頁，較晚存檔的一邊可能會因為版本衝突而無法套用（畫面會自動被另一邊的最新內容取代），建議只留一個分頁操作，避免白改">
               ⚠️ 有其他分頁開著
             </div>
           )}
@@ -503,7 +513,7 @@ export function WorkspacePage() {
         />
         <span className="subtitle workspace-count">共 {result.test_cases.length} 筆用例</span>
         {hasDuplicateTab && (
-          <div className="workspace-duplicate-tab-warning" title="同一個對話同時開著多個分頁，編輯時容易互相蓋掉對方的修改，建議只留一個分頁操作">
+          <div className="workspace-duplicate-tab-warning" title="同一個對話同時開著多個分頁，較晚存檔的一邊可能會因為版本衝突而無法套用（畫面會自動被另一邊的最新內容取代），建議只留一個分頁操作，避免白改">
             ⚠️ 有其他分頁開著
           </div>
         )}
@@ -571,6 +581,8 @@ export function WorkspacePage() {
           onClose={() => setShowMaterials(false)}
         />
       )}
+
+      {conflictToast && <div className="conflict-toast">{conflictToast}</div>}
     </div>
   )
 }
