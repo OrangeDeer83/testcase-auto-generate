@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createProject, listProjects } from '../api'
+import { Tooltip } from './Tooltip'
 import type { ProjectSummary } from '../types'
 
 interface ProjectSwitcherProps {
@@ -53,17 +54,14 @@ export function ProjectSwitcher({ currentProjectId, currentProjectName }: Projec
 
   return (
     <div className="project-switcher" ref={containerRef}>
-      <button
-        type="button"
-        className="project-switcher-trigger"
-        onClick={() => setOpen((v) => !v)}
-        title="切換專案"
-      >
-        <span className="project-switcher-name">{currentProjectName}</span>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
+      <Tooltip placement="bottom" label="切換專案">
+        <button type="button" className="project-switcher-trigger" onClick={() => setOpen((v) => !v)}>
+          <span className="project-switcher-name">{currentProjectName}</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+      </Tooltip>
 
       {open && (
         <div className="project-switcher-menu">

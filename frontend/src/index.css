@@ -357,16 +357,10 @@ body {
   border: 1.5px solid var(--color-panel);
 }
 
-/* ---- 收合側欄圖示的浮動說明（透過 portal 掛到 body，不受清單捲動邊界裁切） ---- */
+/* ---- 全站統一的 hover 提示（Tooltip 元件，透過 portal 掛到 body，不受任何祖先容器的捲動/裁切邊界影響） ---- */
 
-.sidebar-tooltip-anchor {
-  display: flex;
-  position: relative;
-}
-
-.sidebar-tooltip {
+.hover-tooltip {
   position: fixed;
-  transform: translateY(-50%);
   background: var(--color-primary);
   color: #fff;
   padding: 6px 10px;
@@ -380,10 +374,29 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  animation: sidebar-tooltip-in 0.12s ease-out;
+  animation: hover-tooltip-in 0.12s ease-out;
 }
 
-.sidebar-tooltip::before {
+.hover-tooltip-wrap {
+  white-space: normal;
+  max-width: 280px;
+}
+
+.hover-tooltip-title {
+  font-weight: 700;
+}
+
+.hover-tooltip-meta {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.hover-tooltip-right {
+  transform: translateY(-50%);
+}
+
+.hover-tooltip-right::before {
   content: '';
   position: absolute;
   right: 100%;
@@ -393,24 +406,54 @@ body {
   border-right-color: var(--color-primary);
 }
 
-.sidebar-tooltip-title {
-  font-weight: 700;
+.hover-tooltip-left {
+  transform: translate(-100%, -50%);
 }
 
-.sidebar-tooltip-meta {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 11px;
-  font-weight: 500;
+.hover-tooltip-left::before {
+  content: '';
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-left-color: var(--color-primary);
 }
 
-@keyframes sidebar-tooltip-in {
+.hover-tooltip-top {
+  transform: translate(-50%, -100%);
+}
+
+.hover-tooltip-top::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--color-primary);
+}
+
+.hover-tooltip-bottom {
+  transform: translateX(-50%);
+}
+
+.hover-tooltip-bottom::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: var(--color-primary);
+}
+
+@keyframes hover-tooltip-in {
   from {
     opacity: 0;
-    transform: translateY(-50%) translateX(-4px);
   }
   to {
     opacity: 1;
-    transform: translateY(-50%) translateX(0);
   }
 }
 
@@ -1524,6 +1567,24 @@ button.secondary:hover:not(:disabled) {
   margin: 0;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.workspace-lock-progress {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--color-panel-alt);
+  border: 1px solid var(--color-border-soft);
+  color: var(--color-text-muted);
+}
+
+.workspace-lock-progress-complete {
+  color: #1f7a45;
+  border-color: #2f9e5c;
+  background: #e3f5e9;
 }
 
 .workspace-actions {

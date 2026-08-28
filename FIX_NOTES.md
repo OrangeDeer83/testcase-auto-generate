@@ -2,6 +2,34 @@
 
 > 記錄每次修 bug／改善 UX 時「為什麼壞掉、怎麼修好的、背後用到什麼可以遷移到其他情境的觀念」，主要是寫給使用者看的學習筆記，也順便讓之後回頭查、或下一個接手的 Claude 不用重新翻一次 diff 才搞懂修法。跟 [PROGRESS.md](PROGRESS.md) 的差異：PROGRESS.md 是變更歷史總覽（做了什麼），這份專注在單一問題的根因、修法、與原理本身。維護方式見 `.claude/skills/fix-notes/SKILL.md`。
 
+## 2026-08-28 工作區標題列補上鎖定進度、全站 hover 提示改用同一套元件
+
+### 1. 標題列補上「已鎖定 X/Y 筆」進度
+
+**問題**：工作區標題列原本只顯示「共 N 筆用例」，使用者要知道審核鎖定的進度（還有幾筆沒鎖），得自己數表格裡每一列的鎖定圖示，沒有一眼就能看到的總覽。
+
+**修法**：在 `WorkspacePage.tsx` 算出 `lockedCount`（`test_cases.filter(tc => tc.locked).length`）與 `allLocked`（用例數大於零且全部鎖定），標題列的「共 N 筆用例」旁邊加一個「已鎖定 X/Y 筆」的徽章；全部鎖定完成時額外套用 `.workspace-lock-progress-complete`，改成跟表格裡「已鎖定」按鈕同一組綠色（`#1f7a45`／`#2f9e5c`／`#e3f5e9`），讓「全部審核完成」這件事在標題列就看得出來，不用捲到表格底部逐一確認。
+
+**背後的通用觀念**：進度類的數字（幾筆完成／幾筆未完成）放在清單最頂端當摘要，讓使用者不用捲動、不用心算就能掌握整體狀態，是很常見的清單型介面模式（例如任務清單常見的「3/8 已完成」）。這裡額外用顏色（完成時變綠）做二次強化，是刻意跟表格裡「單一用例鎖定後也會變綠」的視覺語言保持一致——同一個「已完成／已鎖定」的意思，在畫面上不同地方最好用同一種顏色語言表達，使用者不用重新學一套新的視覺規則。
+
+**檔案**：`frontend/src/pages/WorkspacePage.tsx`（新增 `lockedCount`／`allLocked`，標題列加上進度徽章）、`frontend/src/index.css`（新增 `.workspace-lock-progress`、`.workspace-lock-progress-complete`）
+
+**驗證方式**：瀏覽器實測（dev 環境 5175）——開啟一個已有 5 筆用例、4 筆已鎖定的對話，確認標題列顯示「已鎖定 4/5 筆」；用 JS 觸發最後一筆的鎖定按鈕，確認數字變成「已鎖定 5/5 筆」且套用了完成樣式（`workspace-lock-progress-complete` class、綠色背景），再點一次解鎖確認正確退回「4/5 筆」且顏色恢復中性色，證實正反兩個方向都有連動。
+
+### 2. 全站的 hover 提示統一改用自訂 Tooltip，不再用瀏覽器原生 title
+
+**問題**：使用者反映畫面上各處 hover 顯示的說明文字，樣式跟「側欄收合時滑鼠移到對話圖示上跳出的提示」不一致——後者是深色底、白字、帶小箭頭的自訂樣式，其他地方（例如鎖定按鈕、展開/收合按鈕、素材卡片檔名、匯出按鈕旁的提示等）用的都是瀏覽器原生的 `title` 屬性，樣式完全由作業系統決定，跳出的時機、外觀、行動裝置支援度都不一致，長文字也沒辦法自動換行。
+
+**修法**：把原本只寫在 `Sidebar.tsx` 內部、專門給側欄收合圖示用的 `IconTooltip`，抽成共用元件 `frontend/src/components/Tooltip.tsx`，全站約 18 處原生 `title` 屬性（`FloatingChat`、`MaterialGrid`、`MaterialRow`、`ProjectSwitcher`、`Sidebar` 展開狀態、`TestCaseTable`、`WorkspacePage` 的分頁警示與匯出提示）都換成用這個元件包起來，支援 `placement`（top/bottom/left/right，依元件在畫面上的位置選擇，避免提示框超出視窗）跟 `wrap`（給版本衝突警示這類長文字用，允許自動換行、限制最大寬度）兩個參數。
+
+第一版實作沿用原本的做法，在使用的元素外面多包一層 `<span>` 當量測用的錨點，結果讓好幾個既有樣式壞掉：`ProjectSwitcher` 的觸發按鈕原本靠 `width: 100%` 撐滿父層寬度，多包一層沒有明確寬度的容器之後，百分比寬度找不到可以參照的基準，版面跟著跑掉；`MaterialGrid` 卡片右上角的刪除按鈕、圖片張數徽章都是 `position: absolute` 相對卡片本身定位，錨點 span 一開始還連帶設了 `position: relative`，直接改變了它們的定位基準。改成用 React 的 `cloneElement` 把量測用的 `ref` 跟滑鼠移入/移出、取得/失去焦點的事件處理器直接掛在原本的元素本身，不額外插入任何 DOM 節點——這樣任何原本依賴「跟父層的關聯」（百分比寬度、絕對定位的基準、flex 版面裡的角色）的樣式規則都不會被打斷，因為排版樹的結構完全沒變。
+
+**背後的通用觀念**：**在既有元素外面「多包一層容器」看似無害，但只要那個元素的樣式有任何一條規則依賴「跟父層/祖先的關係」（百分比寬度、`position: absolute` 找最近的已定位祖先、flex/grid 版面裡作為第 N 個子項目的身分），多包一層就可能打斷那條規則，而且往往要等實際去量測渲染結果才會發現，光看程式碼讀不出來。**這也是為什麼許多 UI 函式庫的 Tooltip／Popover 元件都提供類似 `asChild`（Radix UI）的機制——讓提示邏輯掛在使用者傳入的元素本身，而不是包一層自己的容器；`cloneElement` 是 React 在沒有額外套件時，達到同樣效果的標準做法：把 `ref` 跟事件處理器合併進子元素既有的 props，子元素在 DOM 裡的位置完全不變。
+
+**檔案**：新增 `frontend/src/components/Tooltip.tsx`；移除 `Sidebar.tsx` 內部的 `IconTooltip`，改用共用元件；`FloatingChat.tsx`、`MaterialGrid.tsx`、`MaterialRow.tsx`、`ProjectSwitcher.tsx`、`TestCaseTable.tsx`、`WorkspacePage.tsx` 的原生 `title` 屬性全數換成 `<Tooltip>`；`frontend/src/index.css`（原本只給側欄用的 `.sidebar-tooltip*` 規則改成泛用的 `.hover-tooltip*`，新增 `placement` 對應的四種方向樣式與 `.hover-tooltip-wrap` 換行變體）
+
+**驗證方式**：`npx tsc --noEmit`、`npx vitest run`（12 個測試全過）。瀏覽器實測（dev 環境 5175）：對鎖定按鈕、收合側欄的對話圖示、聊天助手按鈕分別用 JS dispatch `mouseover` 事件，確認跳出的 `.hover-tooltip` 文字、樣式（深色底、白字）、`placement` 對應的 class 都正確；針對曾經壞掉的兩個案例額外驗證——素材卡片檔名 `.material-card-name` 量測其 `parentElement` 確認直接是 `.material-card`（沒有被多包一層），且過長檔名的 `scrollWidth` 大於容器 `width`、`text-overflow: ellipsis` 仍然生效；刪除按鈕 `.material-card-delete` 同樣確認父層還是 `.material-card`，`position: absolute` 的定位基準沒有跑掉。
+
 ## 2026-08-27 偵測「同一個對話不小心開了兩個以上的分頁」，提前提醒
 
 **問題**：使用者反映實際遇過這個情境——不小心把同一個對話開在兩個分頁，其中一個分頁鎖定了某筆用例，另一個分頁的過期快照後來存檔時把鎖定狀態悄悄改回去，導致「明明點了解鎖，AI 卻還是不能改」，完全摸不著頭緒。PR #20 加的版本衝突機制（`result_version`）已經解決了「悄悄覆蓋」這個資料安全問題——過期的存檔現在會被伺服器擋下（409），不會再無聲蓋掉別人剛做的修改。但擋下之後使用者還是得發現提示、重新整理、重做一次剛才的編輯，體驗上仍然是「先讓你撞牆，再告訴你怎麼回事」。既然使用者說明這其實不是真的多人協作、而是自己不小心開了重複分頁，更直接的做法是**在使用者開始編輯之前就提醒他「這裡還有另一個分頁」**，從源頭避免撞到衝突，而不是每次都要事後補救。

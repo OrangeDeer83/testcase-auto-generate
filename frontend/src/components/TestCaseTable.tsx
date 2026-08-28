@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useImageLightbox } from './ImageLightbox'
+import { Tooltip } from './Tooltip'
 import { newId } from '../id'
 import type { ImageRef, TestCase, TestStep } from '../types'
 
@@ -240,30 +241,31 @@ export function TestCaseTable({
           <span className="case-number">{caseIndex + 1}</span>
           <div className="case-card-header" onClick={() => toggleExpanded(caseIndex)}>
             {testCases.length > 1 && (
-              <span
-                className="case-drag-grip"
-                aria-hidden="true"
-                title="拖曳調整用例順序"
-                draggable
-                onClick={(e) => e.stopPropagation()}
-                onDragStart={(e) => {
-                  e.stopPropagation()
-                  setCaseDragIndex(caseIndex)
-                }}
-                onDragEnd={() => {
-                  setCaseDragIndex(null)
-                  setCaseDragOverIndex(null)
-                }}
-              >
-                <svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor">
-                  <circle cx="2" cy="2" r="1.3" />
-                  <circle cx="6" cy="2" r="1.3" />
-                  <circle cx="2" cy="7" r="1.3" />
-                  <circle cx="6" cy="7" r="1.3" />
-                  <circle cx="2" cy="12" r="1.3" />
-                  <circle cx="6" cy="12" r="1.3" />
-                </svg>
-              </span>
+              <Tooltip label="拖曳調整用例順序">
+                <span
+                  className="case-drag-grip"
+                  aria-hidden="true"
+                  draggable
+                  onClick={(e) => e.stopPropagation()}
+                  onDragStart={(e) => {
+                    e.stopPropagation()
+                    setCaseDragIndex(caseIndex)
+                  }}
+                  onDragEnd={() => {
+                    setCaseDragIndex(null)
+                    setCaseDragOverIndex(null)
+                  }}
+                >
+                  <svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor">
+                    <circle cx="2" cy="2" r="1.3" />
+                    <circle cx="6" cy="2" r="1.3" />
+                    <circle cx="2" cy="7" r="1.3" />
+                    <circle cx="6" cy="7" r="1.3" />
+                    <circle cx="2" cy="12" r="1.3" />
+                    <circle cx="6" cy="12" r="1.3" />
+                  </svg>
+                </span>
+              </Tooltip>
             )}
             {expanded && !locked ? (
               <input
@@ -277,65 +279,67 @@ export function TestCaseTable({
             ) : (
               <span className="case-name-display">{testCase.name || '（未命名用例）'}</span>
             )}
-            <button
-              type="button"
-              className={`case-lock-toggle${locked ? ' case-lock-toggle-locked' : ''}`}
-              title={locked ? '已鎖定審核，點擊解鎖以編輯' : '鎖定，標記為已審核'}
-              onClick={(e) => {
-                e.stopPropagation()
-                toggleLock(caseIndex)
-              }}
-            >
-              {locked ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="5" y="11" width="14" height="10" rx="2" />
-                  <path
-                    d="M8 11V7a4 4 0 0 1 8 0v4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="5" y="11" width="14" height="10" rx="2" />
-                  <path
-                    d="M8 11V7a4 4 0 0 1 7.4-2"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  />
-                </svg>
-              )}
-              {locked ? '已鎖定' : '鎖定'}
-            </button>
+            <Tooltip label={locked ? '已鎖定審核，點擊解鎖以編輯' : '鎖定，標記為已審核'}>
+              <button
+                type="button"
+                className={`case-lock-toggle${locked ? ' case-lock-toggle-locked' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleLock(caseIndex)
+                }}
+              >
+                {locked ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="5" y="11" width="14" height="10" rx="2" />
+                    <path
+                      d="M8 11V7a4 4 0 0 1 8 0v4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="5" y="11" width="14" height="10" rx="2" />
+                    <path
+                      d="M8 11V7a4 4 0 0 1 7.4-2"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
+                  </svg>
+                )}
+                {locked ? '已鎖定' : '鎖定'}
+              </button>
+            </Tooltip>
             {!expanded && (
               <>
                 <span className="case-priority-pill">{testCase.priority || '—'}</span>
                 <span className="case-step-count">{stepCount} 個步驟</span>
               </>
             )}
-            <button
-              type="button"
-              className="case-expand-toggle"
-              title={expanded ? '收合' : '展開'}
-              onClick={(e) => {
-                e.stopPropagation()
-                toggleExpanded(caseIndex)
-              }}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}
+            <Tooltip label={expanded ? '收合' : '展開'}>
+              <button
+                type="button"
+                className="case-expand-toggle"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleExpanded(caseIndex)
+                }}
               >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </button>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+            </Tooltip>
           </div>
 
           {expanded && (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UploadedMaterial } from '../types'
 import { useImageLightbox } from './ImageLightbox'
+import { Tooltip } from './Tooltip'
 
 interface MaterialRowProps {
   material: UploadedMaterial
@@ -152,18 +153,19 @@ export function MaterialRow({
                   onClick={() => openPreview(src, `${material.filename} 內嵌圖片 ${index + 1}`)}
                 />
                 {onUngroupImage && (
-                  <button
-                    type="button"
-                    className="material-embedded-image-ungroup"
-                    title="拆出這張圖片，變成獨立的素材"
-                    disabled={busy}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onUngroupImage(material.id, index)
-                    }}
-                  >
-                    拆出
-                  </button>
+                  <Tooltip label="拆出這張圖片，變成獨立的素材">
+                    <button
+                      type="button"
+                      className="material-embedded-image-ungroup"
+                      disabled={busy}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onUngroupImage(material.id, index)
+                      }}
+                    >
+                      拆出
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             ))}
