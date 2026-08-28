@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from openai import OpenAIError
 from pydantic import BaseModel, Field
 
 from app.logging_config import logger
@@ -122,7 +123,7 @@ def generate(project_id: str, conversation_id: str):
     )
 
     messages = build_messages(materials)
-    raw_response = chat_completion(messages)
+    raw_response = _call_llm("POST /generate", conversation_id, messages)
 
     try:
         result = parse_generation_result(raw_response)
@@ -141,6 +142,20 @@ def generate(project_id: str, conversation_id: str):
         conversation_id, len(result.test_cases), len(result.clarification_questions),
     )
     return result
+
+
+def _call_llm(endpoint: str, conversation_id: str, messages: list[dict]) -> str:
+    """呼叫模型的共用包裝——`chat_completion` 本身只設了逾時／重試次數，呼叫失敗
+    （逾時、連線錯誤、模型服務回傳非 2xx）時例外會原封不動往上拋，FastAPI 預設
+    只會變成一個看不出原因的通用 500。這裡統一攔下來，記 log 並回傳使用者看得懂
+    的訊息，而不是讓前端顯示一個難以理解的錯誤。"""
+    try:
+        return chat_completion(messages)
+    except OpenAIError as exc:
+        logger.error("%s conversation=%s 呼叫模型失敗: %s", endpoint, conversation_id, exc)
+        raise HTTPException(
+            status_code=502, detail="模型服務暫時無回應，請稍後再試一次"
+        ) from exc
 
 
 def _isimage_material(material) -> bool:
@@ -185,7 +200,7 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
     messages = build_chat_messages(
         materials, payload.current_test_cases, pending_questions, prior_history, final_message
     )
-    raw_response = chat_completion(messages)
+    raw_response = _call_llm("POST /chat", conversation_id, messages)
 
     try:
         result = parse_generation_result(raw_response)
