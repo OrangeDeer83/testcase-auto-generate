@@ -1,9 +1,11 @@
 import json
+import re
 
 from json_repair import repair_json
 
 from collections.abc import Iterator
 
+from app.logging_config import logger
 from app.models.material import ImageRef, ParsedMaterial
 from app.models.test_case import ChatMessage, ClarificationQuestion, GenerationResult, TestCase
 
@@ -91,6 +93,7 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
    - 沒有回答到的（例如使用者只回答了其中幾個問題、講了不相關的事、或訊息內容答非所問），這個問題必須**原封不動**保留在回傳的 clarification_questions 中再次提出，絕對不可以因為使用者這次沒提到就默默拿掉、當作已解決，也不可以自己編個答案來讓問題消失。
    - 只有當使用者對某個問題明確表示不需要處理時（例如「不管這個」「先跳過」「這個不重要」「不需要」「不用管」），才可以把那個問題從 clarification_questions 移除，並在對應的測試用例中維持原本已知的資訊，不要自行補上答案。
    - 使用者的訊息如果同時包含新的疑慮或指示，除了處理上述判斷之外，也要正常反映在 test_cases 或新的 clarification_questions 上。
+   - **絕對不可以自相矛盾**：如果你在某個問題的 context 欄位裡描述「已解決」「已經處理」「不需要再確認」等意思，就代表這個問題不該再出現在 clarification_questions 陣列裡——已解決的問題就完整移除，不能一邊說已解決一邊又把它留在清單裡再問使用者一次；如果實際上還有殘留的疑慮（例如答案本身又衍生出新的不確定性），context 就不該用「已解決」這種說法，應該具體描述還沒確定的部分是什麼。
 6. 如果訊息中有列出「已鎖定審核」的用例名稱清單，這些用例已經過人工審核確認，絕對不可以修改它們的任何欄位、也不可以刪除或改名；使用者的指示如果會影響到它們，不要直接改，改成在 clarification_questions 提出問題向使用者確認要不要先解鎖。
 7. 每筆測試用例如果是根據前面素材內容裡某幾張截圖寫的，把對應的圖片編號（素材內容裡標示的「圖N」，只填數字 N）填進 based_on_images 陣列；不是針對特定截圖的用例留空陣列即可。新增或修改用例時要重新判斷這個欄位，不要照抄舊值。
 8. 所有文字使用繁體中文。
@@ -251,6 +254,28 @@ class LLMResponseParseError(ValueError):
     pass
 
 
+# 模型偶爾會在某個問題的 context 裡自己寫「已解決」，卻仍把這個問題留在
+# clarification_questions 陣列裡再問使用者一次——這是模型輸出前後矛盾，不是
+# 使用者需要再次確認的真問題。SYSTEM_PROMPT_CHAT 規則 5 已經明文禁止這種情況，
+# 但模型不見得每次都遵守，這裡當作最後一道防線過濾掉，不然使用者會一直看到
+# 自己已經回答過的問題。
+_RESOLVED_CONTEXT_PATTERN = re.compile(r"已(?:經)?(?:解決|排除|處理|不需要(?:再)?(?:確認|澄清))")
+
+
+def _drop_self_contradicting_questions(result: GenerationResult) -> GenerationResult:
+    kept = []
+    for question in result.clarification_questions:
+        if question.context and _RESOLVED_CONTEXT_PATTERN.search(question.context):
+            logger.warning(
+                "clarification_question 自相矛盾（context 說已解決卻仍留在清單中），已濾掉: id=%s question=%r context=%r",
+                question.id, question.question, question.context,
+            )
+            continue
+        kept.append(question)
+    result.clarification_questions = kept
+    return result
+
+
 def parse_generation_result(raw_response: str) -> GenerationResult:
     text = raw_response.strip()
     if text.startswith("```"):
@@ -272,4 +297,5 @@ def parse_generation_result(raw_response: str) -> GenerationResult:
                 f"LLM 回傳內容不是合法 JSON：{original_exc}"
             ) from original_exc
 
-    return GenerationResult.model_validate(data)
+    result = GenerationResult.model_validate(data)
+    return _drop_self_contradicting_questions(result)
