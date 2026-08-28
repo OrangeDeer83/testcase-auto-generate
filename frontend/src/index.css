@@ -938,7 +938,9 @@ h2 {
 }
 
 .image-viewer-toolbar-buttons button:disabled {
+  background: transparent;
   color: rgba(255, 255, 255, 0.3);
+  box-shadow: none;
 }
 
 .image-viewer-zoom-level {
