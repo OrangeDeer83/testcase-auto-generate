@@ -84,9 +84,11 @@ function ConversationNavItem({
           }}
         />
       ) : (
-        <span className="sidebar-nav-label" onClick={onNavigate}>
-          {conversation.name}
-        </span>
+        <Tooltip label={conversation.name}>
+          <span className="sidebar-nav-label" onClick={onNavigate}>
+            {conversation.name}
+          </span>
+        </Tooltip>
       )}
       {!hasResult && !editing && (
         <Tooltip label="還沒有測試用例">
