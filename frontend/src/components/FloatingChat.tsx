@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChatPanel } from './ChatPanel'
 import { Tooltip } from './Tooltip'
-import type { ChatMessage } from '../types'
+import type { ChatMessage, ImageRef, TestCase, UploadedMaterial } from '../types'
 
 interface FloatingChatProps {
   log: ChatMessage[]
   busy: boolean
   onSend: (message: string, file?: File) => void
+  materials: UploadedMaterial[]
+  selectedMaterialIds: string[]
+  testCases: TestCase[]
+  imageMap: Map<number, ImageRef>
+  onDeselectMaterials: (ids: string[]) => void
 }
 
 const MIN_WIDTH = 300
@@ -14,7 +19,16 @@ const MAX_WIDTH = 720
 const MIN_HEIGHT = 360
 const MAX_HEIGHT = 800
 
-export function FloatingChat({ log, busy, onSend }: FloatingChatProps) {
+export function FloatingChat({
+  log,
+  busy,
+  onSend,
+  materials,
+  selectedMaterialIds,
+  testCases,
+  imageMap,
+  onDeselectMaterials,
+}: FloatingChatProps) {
   const [open, setOpen] = useState(false)
   const [unread, setUnread] = useState(0)
   const [size, setSize] = useState({ width: 380, height: 560 })
@@ -99,7 +113,16 @@ export function FloatingChat({ log, busy, onSend }: FloatingChatProps) {
         </Tooltip>
       </div>
       <div className="chat-float-body">
-        <ChatPanel log={log} busy={busy} onSend={onSend} />
+        <ChatPanel
+          log={log}
+          busy={busy}
+          onSend={onSend}
+          materials={materials}
+          selectedMaterialIds={selectedMaterialIds}
+          testCases={testCases}
+          imageMap={imageMap}
+          onDeselectMaterials={onDeselectMaterials}
+        />
       </div>
     </div>
   )

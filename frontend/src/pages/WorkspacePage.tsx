@@ -587,7 +587,16 @@ export function WorkspacePage() {
         />
       </div>
 
-      <FloatingChat log={chatLog} busy={busy} onSend={handleSendMessage} />
+      <FloatingChat
+        log={chatLog}
+        busy={busy}
+        onSend={handleSendMessage}
+        materials={materials}
+        selectedMaterialIds={selectedMaterialIds}
+        testCases={result.test_cases}
+        imageMap={imageMap}
+        onDeselectMaterials={handleSelectedMaterialsChange}
+      />
 
       {showMaterials && (
         <MaterialsModal
