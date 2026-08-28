@@ -1,5 +1,7 @@
+import json
+
 from app.models.material import ParsedMaterial
-from app.services.prompt_builder import build_material_content, resolve_image_numbers
+from app.services.prompt_builder import build_material_content, parse_generation_result, resolve_image_numbers
 
 
 def test_single_image_material_has_no_group_hint_but_is_still_numbered() -> None:
@@ -102,3 +104,44 @@ def test_resolve_image_numbers_matches_prompt_numbering() -> None:
         (2, second.id, "spec.pdf", "data:image/png;base64,B"),
         (3, second.id, "spec.pdf", "data:image/png;base64,C"),
     ]
+
+
+def test_parse_generation_result_drops_questions_the_model_marked_as_resolved() -> None:
+    """模型偶爾會在 context 裡寫「此問題已解決」，卻仍把問題留在 clarification_questions
+    裡再問一次——這種自相矛盾的輸出要被過濾掉，不然使用者會一直看到自己已經回答過的問題。"""
+    raw = json.dumps(
+        {
+            "test_cases": [],
+            "clarification_questions": [
+                {
+                    "id": "q1",
+                    "question": "錯誤提示的文案是什麼？",
+                    "context": "使用者回覆會有錯誤提示，但當前版本暫不支援。此問題已解決，但需確認測試步驟是否需調整。",
+                },
+                {
+                    "id": "q2",
+                    "question": "UUID 的有效範圍是多少？",
+                    "context": "規格中未說明格式與範圍，仍待使用者確認。",
+                },
+            ],
+        }
+    )
+
+    result = parse_generation_result(raw)
+
+    assert [q.id for q in result.clarification_questions] == ["q2"]
+
+
+def test_parse_generation_result_keeps_questions_without_resolved_wording() -> None:
+    raw = json.dumps(
+        {
+            "test_cases": [],
+            "clarification_questions": [
+                {"id": "q1", "question": "邊界值是多少？", "context": ""},
+            ],
+        }
+    )
+
+    result = parse_generation_result(raw)
+
+    assert [q.id for q in result.clarification_questions] == ["q1"]

@@ -22,6 +22,7 @@ import { FloatingChat } from '../components/FloatingChat'
 import { MaterialSelector } from '../components/MaterialSelector'
 import { MaterialsModal } from '../components/MaterialsModal'
 import { TestCaseTable } from '../components/TestCaseTable'
+import { Tooltip } from '../components/Tooltip'
 import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
 import { newId } from '../id'
 import { useDuplicateTabWarning } from '../useDuplicateTabWarning'
@@ -454,6 +455,8 @@ export function WorkspacePage() {
   }
 
   const hasResult = result.test_cases.length > 0 || result.clarification_questions.length > 0
+  const lockedCount = result.test_cases.filter((tc) => tc.locked).length
+  const allLocked = result.test_cases.length > 0 && lockedCount === result.test_cases.length
 
   if (!loaded) return <p className="subtitle">載入中…</p>
 
@@ -468,9 +471,13 @@ export function WorkspacePage() {
             onBlur={(e) => commitRename(e.target.value)}
           />
           {hasDuplicateTab && (
-            <div className="workspace-duplicate-tab-warning" title="同一個對話同時開著多個分頁，較晚存檔的一邊可能會因為版本衝突而無法套用（畫面會自動被另一邊的最新內容取代），建議只留一個分頁操作，避免白改">
-              ⚠️ 有其他分頁開著
-            </div>
+            <Tooltip
+              placement="bottom"
+              wrap
+              label="同一個對話同時開著多個分頁，較晚存檔的一邊可能會因為版本衝突而無法套用（畫面會自動被另一邊的最新內容取代），建議只留一個分頁操作，避免白改"
+            >
+              <div className="workspace-duplicate-tab-warning">⚠️ 有其他分頁開著</div>
+            </Tooltip>
           )}
         </div>
         <h2>選擇要使用的素材</h2>
@@ -509,29 +516,40 @@ export function WorkspacePage() {
           onBlur={(e) => commitRename(e.target.value)}
         />
         <span className="subtitle workspace-count">共 {result.test_cases.length} 筆用例</span>
+        <span className={`workspace-lock-progress${allLocked ? ' workspace-lock-progress-complete' : ''}`}>
+          已鎖定 {lockedCount}/{result.test_cases.length} 筆
+        </span>
         {hasDuplicateTab && (
-          <div className="workspace-duplicate-tab-warning" title="同一個對話同時開著多個分頁，較晚存檔的一邊可能會因為版本衝突而無法套用（畫面會自動被另一邊的最新內容取代），建議只留一個分頁操作，避免白改">
-            ⚠️ 有其他分頁開著
-          </div>
+          <Tooltip
+            placement="bottom"
+            wrap
+            label="同一個對話同時開著多個分頁，較晚存檔的一邊可能會因為版本衝突而無法套用（畫面會自動被另一邊的最新內容取代），建議只留一個分頁操作，避免白改"
+          >
+            <div className="workspace-duplicate-tab-warning">⚠️ 有其他分頁開著</div>
+          </Tooltip>
         )}
         {workspaceNotice && (
-          <div
-            className="workspace-notice"
-            title={
-              workspaceNotice.focusIndex != null
-                ? '還有測試用例尚未鎖定審核，已為您跳到第一筆未鎖定的用例——鎖定後這則提示會自動消失'
-                : '目前有尚未回答的澄清問題，建議確認後再匯出（本次仍會照常匯出）'
-            }
-          >
-            <span>{workspaceNotice.message}</span>
-            <button
-              type="button"
-              className="workspace-notice-close"
-              title="關閉提示"
-              onClick={() => setWorkspaceNotice(null)}
+          <div className="workspace-notice">
+            <Tooltip
+              placement="bottom"
+              wrap
+              label={
+                workspaceNotice.focusIndex != null
+                  ? '還有測試用例尚未鎖定審核，已為您跳到第一筆未鎖定的用例——鎖定後這則提示會自動消失'
+                  : '目前有尚未回答的澄清問題，建議確認後再匯出（本次仍會照常匯出）'
+              }
             >
-              ✕
-            </button>
+              <span>{workspaceNotice.message}</span>
+            </Tooltip>
+            <Tooltip placement="bottom" label="關閉提示">
+              <button
+                type="button"
+                className="workspace-notice-close"
+                onClick={() => setWorkspaceNotice(null)}
+              >
+                ✕
+              </button>
+            </Tooltip>
           </div>
         )}
         <div className="workspace-actions">

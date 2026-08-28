@@ -3,6 +3,7 @@ import type { KeyboardEvent, MouseEvent } from 'react'
 import type { UploadedMaterial } from '../types'
 import { MaterialRow } from './MaterialRow'
 import { ModalOverlay } from './ModalOverlay'
+import { Tooltip } from './Tooltip'
 
 interface MaterialGridProps {
   materials: UploadedMaterial[]
@@ -171,14 +172,16 @@ export function MaterialGrid({
                   <span className="material-card-icon">{material.kind === 'text' ? '📝' : '📄'}</span>
                 )}
                 {!!material.embedded_images?.length && (
-                  <span className="material-card-image-badge" title={`內含 ${material.embedded_images.length} 張圖片`}>
-                    🖼️ {material.embedded_images.length}
-                  </span>
+                  <Tooltip label={`內含 ${material.embedded_images.length} 張圖片`}>
+                    <span className="material-card-image-badge">
+                      🖼️ {material.embedded_images.length}
+                    </span>
+                  </Tooltip>
                 )}
               </span>
-              <span className="material-card-name" title={material.filename}>
-                {material.filename}
-              </span>
+              <Tooltip label={material.filename}>
+                <span className="material-card-name">{material.filename}</span>
+              </Tooltip>
               {mergeMode
                 ? mergeEligible && (
                     <span className="material-card-merge-badge" aria-hidden="true">
@@ -186,16 +189,17 @@ export function MaterialGrid({
                     </span>
                   )
                 : onRemoveMaterial && (
-                    <button
-                      type="button"
-                      className="material-card-delete"
-                      title="刪除素材"
-                      onClick={(e) => handleDeleteClick(e, material)}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6" />
-                      </svg>
-                    </button>
+                    <Tooltip label="刪除素材">
+                      <button
+                        type="button"
+                        className="material-card-delete"
+                        onClick={(e) => handleDeleteClick(e, material)}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6" />
+                        </svg>
+                      </button>
+                    </Tooltip>
                   )}
             </div>
           )
