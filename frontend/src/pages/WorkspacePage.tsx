@@ -20,7 +20,7 @@ import {
 } from '../api'
 import { FloatingChat } from '../components/FloatingChat'
 import { MaterialSelector } from '../components/MaterialSelector'
-import { MaterialsModal } from '../components/MaterialsModal'
+import { ModalOverlay } from '../components/ModalOverlay'
 import { TestCaseTable } from '../components/TestCaseTable'
 import { Tooltip } from '../components/Tooltip'
 import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
@@ -599,11 +599,26 @@ export function WorkspacePage() {
       />
 
       {showMaterials && (
-        <MaterialsModal
-          materials={materials.filter((m) => selectedMaterialIds.includes(m.id))}
-          title="這個對話使用中的素材"
-          onClose={() => setShowMaterials(false)}
-        />
+        <ModalOverlay onClose={() => setShowMaterials(false)}>
+          <div className="modal-header">
+            <h2>調整這個對話使用中的素材</h2>
+            <button className="secondary" onClick={() => setShowMaterials(false)}>
+              關閉
+            </button>
+          </div>
+          <MaterialSelector
+            materials={materials}
+            selectedIds={selectedMaterialIds}
+            busy={busy}
+            onChange={handleSelectedMaterialsChange}
+            onUpdateMaterial={handleUpdateMaterial}
+            onAddFiles={handleAddFilesToSelector}
+            onAddText={handleAddTextToSelector}
+            onRemoveMaterial={handleRemoveMaterial}
+            onMergeMaterials={handleMergeMaterials}
+            onUngroupImage={handleUngroupImage}
+          />
+        </ModalOverlay>
       )}
 
       {conflictToast && <div className="conflict-toast">{conflictToast}</div>}
