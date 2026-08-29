@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
 import {
   addTextMaterial,
@@ -25,6 +25,7 @@ import { TestCaseTable } from '../components/TestCaseTable'
 import { Tooltip } from '../components/Tooltip'
 import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
 import { newId } from '../id'
+import { countMaterialUsage } from '../materialUsage'
 import { useDuplicateTabWarning } from '../useDuplicateTabWarning'
 import type { ShellContext } from './ProjectLayout'
 import type { ChatMessage, GenerationResult, ImageRef, UploadedMaterial } from '../types'
@@ -457,6 +458,10 @@ export function WorkspacePage() {
   const hasResult = result.test_cases.length > 0 || result.clarification_questions.length > 0
   const lockedCount = result.test_cases.filter((tc) => tc.locked).length
   const allLocked = result.test_cases.length > 0 && lockedCount === result.test_cases.length
+  const materialUsageCounts = useMemo(
+    () => countMaterialUsage(result.test_cases, imageMap),
+    [result.test_cases, imageMap],
+  )
 
   if (!loaded) return <p className="subtitle">載入中…</p>
 
@@ -595,7 +600,7 @@ export function WorkspacePage() {
         selectedMaterialIds={selectedMaterialIds}
         testCases={result.test_cases}
         imageMap={imageMap}
-        onDeselectMaterials={handleSelectedMaterialsChange}
+        onChangeSelectedMaterials={handleSelectedMaterialsChange}
       />
 
       {showMaterials && (
@@ -617,6 +622,7 @@ export function WorkspacePage() {
             onRemoveMaterial={handleRemoveMaterial}
             onMergeMaterials={handleMergeMaterials}
             onUngroupImage={handleUngroupImage}
+            usageCounts={materialUsageCounts}
           />
         </ModalOverlay>
       )}

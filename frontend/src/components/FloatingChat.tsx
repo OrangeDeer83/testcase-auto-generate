@@ -11,7 +11,7 @@ interface FloatingChatProps {
   selectedMaterialIds: string[]
   testCases: TestCase[]
   imageMap: Map<number, ImageRef>
-  onDeselectMaterials: (ids: string[]) => void
+  onChangeSelectedMaterials: (ids: string[]) => void
 }
 
 const MIN_WIDTH = 300
@@ -27,7 +27,7 @@ export function FloatingChat({
   selectedMaterialIds,
   testCases,
   imageMap,
-  onDeselectMaterials,
+  onChangeSelectedMaterials,
 }: FloatingChatProps) {
   const [open, setOpen] = useState(false)
   const [unread, setUnread] = useState(0)
@@ -121,7 +121,7 @@ export function FloatingChat({
           selectedMaterialIds={selectedMaterialIds}
           testCases={testCases}
           imageMap={imageMap}
-          onDeselectMaterials={onDeselectMaterials}
+          onChangeSelectedMaterials={onChangeSelectedMaterials}
         />
       </div>
     </div>

@@ -3,10 +3,11 @@ import { describe, expect, it } from 'vitest'
 import {
   OVERLOAD_THRESHOLD_SECONDS,
   estimateProcessingSeconds,
+  findLikelyRelevantUnselectedMaterials,
   findLikelyUnrelatedImageMaterials,
   isOverloaded,
 } from './materialRisk'
-import type { ChatMessage, ImageRef, TestCase, UploadedMaterial } from './types'
+import type { ChatMessage, ClarificationQuestion, ImageRef, TestCase, UploadedMaterial } from './types'
 
 function makeTextMaterial(overrides: Partial<UploadedMaterial> = {}): UploadedMaterial {
   return {
@@ -165,6 +166,53 @@ describe('findLikelyUnrelatedImageMaterials', () => {
       [makeCase({ based_on_images: [1] })],
       new Map<number, ImageRef>(),
     )
+
+    expect(result).toEqual([])
+  })
+})
+
+function makeQuestion(overrides: Partial<ClarificationQuestion> = {}): ClarificationQuestion {
+  return {
+    id: crypto.randomUUID(),
+    question: '',
+    context: '',
+    ...overrides,
+  }
+}
+
+describe('findLikelyRelevantUnselectedMaterials', () => {
+  it('問題的 context 提到某個未勾選素材的檔名時，建議加入該素材', () => {
+    const material = makeTextMaterial({ filename: '登入規格.docx' })
+    const question = makeQuestion({ context: '登入規格 文件裡沒有說明密碼長度上限' })
+
+    const result = findLikelyRelevantUnselectedMaterials(question, [material], [])
+
+    expect(result).toEqual([material])
+  })
+
+  it('問題文字提到素材的說明文字時，也能判斷關聯', () => {
+    const material = makeImageMaterial({ description: '登入頁面錯誤提示截圖' })
+    const question = makeQuestion({ question: '登入頁面錯誤提示截圖裡的文案是什麼？' })
+
+    const result = findLikelyRelevantUnselectedMaterials(question, [material], [])
+
+    expect(result).toEqual([material])
+  })
+
+  it('已經勾選的素材不會被重複建議', () => {
+    const material = makeTextMaterial({ filename: '登入規格.docx' })
+    const question = makeQuestion({ context: '登入規格 文件裡沒有說明密碼長度上限' })
+
+    const result = findLikelyRelevantUnselectedMaterials(question, [material], [material.id])
+
+    expect(result).toEqual([])
+  })
+
+  it('問題文字裡找不到任何線索時不建議任何素材', () => {
+    const material = makeTextMaterial({ filename: '登入規格.docx' })
+    const question = makeQuestion({ question: '這個欄位的預設值是什麼？', context: '畫面上沒有標示' })
+
+    const result = findLikelyRelevantUnselectedMaterials(question, [material], [])
 
     expect(result).toEqual([])
   })

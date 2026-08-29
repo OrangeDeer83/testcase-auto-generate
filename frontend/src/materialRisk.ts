@@ -1,4 +1,4 @@
-import type { ChatMessage, ImageRef, TestCase, UploadedMaterial } from './types'
+import type { ChatMessage, ClarificationQuestion, ImageRef, TestCase, UploadedMaterial } from './types'
 
 /**
  * 這些係數是根據 2026-08-28 一次真實逾時事件回推的粗略估計（見 FIX_NOTES.md）：
@@ -92,4 +92,35 @@ export function findLikelyUnrelatedImageMaterials(
   )
 
   return selectedImageMaterials.filter((m) => !relevantMaterialIds.has(m.id))
+}
+
+function stripExtension(filename: string): string {
+  const dotIndex = filename.lastIndexOf('.')
+  return dotIndex > 0 ? filename.slice(0, dotIndex) : filename
+}
+
+/** 判斷一則問題的文字裡，有沒有提到某個素材的檔名（去除副檔名）或說明文字——
+ * 只做字串比對，不理解語意，中文沒有空白分詞，這是唯一不用猜語意就能做的
+ * 判斷方式。任何一邊少於 2 個字就不比對，避免太短的字串到處誤判命中。 */
+function questionMentionsMaterial(questionText: string, material: UploadedMaterial): boolean {
+  const candidates = [stripExtension(material.filename), material.description]
+    .map((s) => s?.trim())
+    .filter((s): s is string => !!s && s.length >= 2)
+  return candidates.some((candidate) => questionText.includes(candidate))
+}
+
+/**
+ * 找出目前「沒有勾選」、但看起來跟某個待確認問題有關的素材，提示使用者可能
+ * 需要加進來才能回答這個問題。只用問題文字（question + context）跟素材的
+ * 檔名／說明做字串比對，判斷不出語意，也不理解圖片實際內容——找不到明確的
+ * 文字關聯就不建議任何項目，避免因為「感覺應該相關」就亂猜，誤導使用者。
+ */
+export function findLikelyRelevantUnselectedMaterials(
+  question: ClarificationQuestion,
+  materials: UploadedMaterial[],
+  selectedMaterialIds: string[],
+): UploadedMaterial[] {
+  const questionText = `${question.question} ${question.context}`
+  const unselected = materials.filter((m) => !selectedMaterialIds.includes(m.id))
+  return unselected.filter((m) => questionMentionsMaterial(questionText, m))
 }

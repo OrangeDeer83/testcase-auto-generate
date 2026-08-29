@@ -25,6 +25,10 @@ interface MaterialGridProps {
   onToggleSelect?: (id: string) => void
   /** 有給才會在格子最後多一張「+ 新增素材」卡片。 */
   onAddClick?: () => void
+  /** 有給才會在圖片類素材卡片上顯示「已被 N 筆用例引用／尚未被引用」的標籤——
+   * 只有已經產生過用例的對話才有意義，沒給就不顯示，不要顯示一個永遠是 0 的
+   * 誤導性標籤。 */
+  usageCounts?: Map<string, number>
 }
 
 /** 素材卡片格：專案素材庫、對話素材選取畫面共用同一套排版跟編輯視窗。 */
@@ -38,6 +42,7 @@ export function MaterialGrid({
   selectedIds,
   onToggleSelect,
   onAddClick,
+  usageCounts,
 }: MaterialGridProps) {
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null)
   const editingMaterial = materials.find((m) => m.id === editingMaterialId) ?? null
@@ -139,6 +144,8 @@ export function MaterialGrid({
           const mergeIndex = mergeSelected.indexOf(material.id)
           const mergeEligible =
             mergeIndex >= 0 || mergeSelected.length === 0 || material.kind === 'image'
+          const isImageLike = material.kind === 'image' || (material.embedded_images?.length ?? 0) > 0
+          const usageCount = usageCounts?.get(material.id) ?? 0
           return (
             <div
               key={material.id}
@@ -182,6 +189,21 @@ export function MaterialGrid({
               <Tooltip label={material.filename}>
                 <span className="material-card-name">{material.filename}</span>
               </Tooltip>
+              {usageCounts && isImageLike && (
+                <Tooltip
+                  label={
+                    usageCount > 0
+                      ? `已被 ${usageCount} 筆測試用例引用`
+                      : '目前沒有任何測試用例引用這個素材，取消勾選應該不影響已產生的內容'
+                  }
+                >
+                  <span
+                    className={`material-card-usage-badge${usageCount > 0 ? ' material-card-usage-badge-used' : ''}`}
+                  >
+                    {usageCount > 0 ? `已用 ${usageCount}` : '未使用'}
+                  </span>
+                </Tooltip>
+              )}
               {mergeMode
                 ? mergeEligible && (
                     <span className="material-card-merge-badge" aria-hidden="true">
