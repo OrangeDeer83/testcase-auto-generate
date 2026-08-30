@@ -3,10 +3,12 @@ import type { ImageRef, TestCase } from './types'
 export interface MaterialUsage {
   /** 引用這個素材的用例總數。 */
   total: number
+  /** 引用這個素材、且「已經鎖定」的用例名稱——鎖定機制會擋下任何改動，
+   * 這些用例不受取消勾選素材影響，列出來讓使用者安心確認。 */
+  lockedCaseNames: string[]
   /** 引用這個素材、但「目前沒有鎖定」的用例名稱——這些用例之後如果再跟模型
    * 對話，模型會失去這個素材的依據，可能因此重新提出疑問、或改動內容時
-   * 無法再對照原始素材確認。已鎖定的用例不受影響，鎖定機制會擋下任何改動，
-   * 所以不需要列在這裡示警。 */
+   * 無法再對照原始素材確認，需要使用者先確認過再決定要不要取消勾選。 */
   unlockedCaseNames: string[]
 }
 
@@ -29,9 +31,11 @@ export function countMaterialUsage(testCases: TestCase[], imageMap: Map<number, 
         .filter((id): id is string => !!id),
     )
     materialIds.forEach((id) => {
-      const entry = usage.get(id) ?? { total: 0, unlockedCaseNames: [] }
+      const entry = usage.get(id) ?? { total: 0, lockedCaseNames: [], unlockedCaseNames: [] }
       entry.total += 1
-      if (!testCase.locked) entry.unlockedCaseNames.push(testCase.name || '（未命名用例）')
+      const name = testCase.name || '（未命名用例）'
+      if (testCase.locked) entry.lockedCaseNames.push(name)
+      else entry.unlockedCaseNames.push(name)
       usage.set(id, entry)
     })
   }

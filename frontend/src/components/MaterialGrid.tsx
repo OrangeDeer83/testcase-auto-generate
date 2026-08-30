@@ -49,6 +49,13 @@ export function MaterialGrid({
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null)
   const editingMaterial = materials.find((m) => m.id === editingMaterialId) ?? null
 
+  // 取消勾選「有尚未鎖定的用例在用」的素材時，跳出這個自訂警示視窗確認——
+  // 不用瀏覽器原生的 window.confirm，因為原生對話框沒辦法排版列出詳細的
+  // 已鎖定／未鎖定用例清單，樣式也跟畫面其他地方不一致。
+  const [unlockRiskMaterialId, setUnlockRiskMaterialId] = useState<string | null>(null)
+  const unlockRiskMaterial = materials.find((m) => m.id === unlockRiskMaterialId) ?? null
+  const unlockRiskUsage = unlockRiskMaterialId ? usageCounts?.get(unlockRiskMaterialId) : undefined
+
   // 合併模式：跟「勾選要送給模型的素材」是兩件獨立的事，各自管自己的狀態，
   // 避免同一個勾選框身兼兩種語意。mergeSelected 用陣列保留選取順序——
   // 第一個選的會是合併後的主圖，其餘依序變成附加圖片。
@@ -103,14 +110,15 @@ export function MaterialGrid({
     if (!onToggleSelect) return
     const unlockedCaseNames = usageCounts?.get(material.id)?.unlockedCaseNames ?? []
     if (currentlySelected && unlockedCaseNames.length > 0) {
-      const confirmed = window.confirm(
-        `以下尚未鎖定的用例是根據「${material.filename}」寫的：\n\n` +
-          unlockedCaseNames.map((name) => `・${name}`).join('\n') +
-          '\n\n取消勾選之後，模型再對話時會失去這個素材的依據，之後的修改可能無法再對照原始素材確認。確定要取消勾選嗎？',
-      )
-      if (!confirmed) return
+      setUnlockRiskMaterialId(material.id)
+      return
     }
     onToggleSelect(material.id)
+  }
+
+  const confirmUnlockRiskToggle = () => {
+    if (unlockRiskMaterialId) onToggleSelect?.(unlockRiskMaterialId)
+    setUnlockRiskMaterialId(null)
   }
 
   const handleDeleteClick = (e: MouseEvent<HTMLButtonElement>, material: UploadedMaterial) => {
@@ -280,6 +288,51 @@ export function MaterialGrid({
               onUngroupImage={onUngroupImage}
             />
           </ul>
+        </ModalOverlay>
+      )}
+
+      {unlockRiskMaterial && (
+        <ModalOverlay onClose={() => setUnlockRiskMaterialId(null)} panelClassName="material-unlock-risk-panel">
+          <div className="modal-header">
+            <h2>取消勾選前請確認</h2>
+            <button className="secondary" onClick={() => setUnlockRiskMaterialId(null)}>
+              關閉
+            </button>
+          </div>
+          <p className="subtitle" style={{ marginTop: 0 }}>
+            「{unlockRiskMaterial.filename}」目前被以下測試用例引用：
+          </p>
+          {!!unlockRiskUsage?.lockedCaseNames.length && (
+            <div className="material-unlock-risk-group material-unlock-risk-group-safe">
+              <p className="material-unlock-risk-group-title">✓ 已鎖定，取消勾選不受影響</p>
+              <ul>
+                {unlockRiskUsage.lockedCaseNames.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!!unlockRiskUsage?.unlockedCaseNames.length && (
+            <div className="material-unlock-risk-group material-unlock-risk-group-warning">
+              <p className="material-unlock-risk-group-title">⚠️ 尚未鎖定，需要您先確認</p>
+              <ul>
+                {unlockRiskUsage.unlockedCaseNames.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
+              <p className="material-unlock-risk-note">
+                取消勾選之後，模型再對話時會失去這個素材的依據，之後的修改可能無法再對照原始素材確認。
+              </p>
+            </div>
+          )}
+          <div className="material-unlock-risk-actions">
+            <button type="button" className="secondary" onClick={() => setUnlockRiskMaterialId(null)}>
+              取消
+            </button>
+            <button type="button" onClick={confirmUnlockRiskToggle}>
+              確定取消勾選
+            </button>
+          </div>
         </ModalOverlay>
       )}
     </>

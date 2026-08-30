@@ -64,7 +64,7 @@ describe('countMaterialUsage', () => {
     expect(result.size).toBe(0)
   })
 
-  it('列出引用這個素材、但尚未鎖定的用例名稱', () => {
+  it('分別列出引用這個素材的已鎖定／尚未鎖定用例名稱', () => {
     const imageMap = new Map<number, ImageRef>([[1, makeImageRef(1, 'material-a')]])
     const testCases = [
       makeCase({ name: '已鎖定的用例', based_on_images: [1], locked: true }),
@@ -73,15 +73,20 @@ describe('countMaterialUsage', () => {
 
     const result = countMaterialUsage(testCases, imageMap)
 
-    expect(result.get('material-a')).toEqual({ total: 2, unlockedCaseNames: ['尚未鎖定的用例'] })
+    expect(result.get('material-a')).toEqual({
+      total: 2,
+      lockedCaseNames: ['已鎖定的用例'],
+      unlockedCaseNames: ['尚未鎖定的用例'],
+    })
   })
 
-  it('全部用例都已鎖定時，unlockedCaseNames 是空陣列', () => {
+  it('全部用例都已鎖定時，unlockedCaseNames 是空陣列、lockedCaseNames 有值', () => {
     const imageMap = new Map<number, ImageRef>([[1, makeImageRef(1, 'material-a')]])
-    const testCases = [makeCase({ based_on_images: [1], locked: true })]
+    const testCases = [makeCase({ name: '已鎖定的用例', based_on_images: [1], locked: true })]
 
     const result = countMaterialUsage(testCases, imageMap)
 
     expect(result.get('material-a')?.unlockedCaseNames).toEqual([])
+    expect(result.get('material-a')?.lockedCaseNames).toEqual(['已鎖定的用例'])
   })
 })
