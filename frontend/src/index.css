@@ -1210,6 +1210,23 @@ h2 {
   white-space: nowrap;
 }
 
+.material-card-usage-badge {
+  align-self: flex-start;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-panel-alt);
+  color: var(--color-text-faint);
+  border: 1px solid var(--color-border-soft);
+}
+
+.material-card-usage-badge-used {
+  background: #e3f5e9;
+  color: #1f7a45;
+  border-color: #2f9e5c;
+}
+
 .material-card-add {
   background: transparent;
   border: 1px dashed var(--color-border);
@@ -1354,6 +1371,21 @@ button:disabled {
   background: #c3cdd8;
   box-shadow: none;
   cursor: not-allowed;
+}
+
+/* 視覺上跟 button:disabled 一致，但不是真的 disabled 屬性——保留 hover 事件，
+   讓包在外面的 Tooltip 還能正常顯示（瀏覽器不會對真正 disabled 的表單元件
+   觸發 mouseover/mouseenter）。 */
+.button-disabled-hoverable {
+  background: #c3cdd8;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.button-disabled-hoverable:hover {
+  background: #c3cdd8;
+  box-shadow: none;
+  transform: none;
 }
 
 button.secondary {
@@ -1540,6 +1572,20 @@ button.secondary:hover:not(:disabled) {
   margin-top: 2px;
 }
 
+.question-material-suggestion {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
 .chat-bubble {
   padding: 9px 14px;
   border-radius: var(--radius-md);
@@ -1597,6 +1643,32 @@ button.secondary:hover:not(:disabled) {
   max-height: 52px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
+}
+
+.chat-overload-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fff6e5;
+  color: #8a5a00;
+  border: 1px solid #e6c179;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.chat-overload-suggestions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chat-overload-suggestions span {
+  flex: 1;
+  min-width: 0;
 }
 
 .chat-input-row {

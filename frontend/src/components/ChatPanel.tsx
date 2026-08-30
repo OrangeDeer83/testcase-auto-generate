@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ClipboardEvent } from 'react'
 import { getPastedImageFile } from '../clipboardImage'
+import {
+  estimateProcessingSeconds,
+  findLikelyRelevantUnselectedMaterials,
+  findLikelyUnrelatedImageMaterials,
+  isOverloaded,
+} from '../materialRisk'
 import { useImageLightbox } from './ImageLightbox'
-import type { ChatMessage } from '../types'
+import { Tooltip } from './Tooltip'
+import type { ChatMessage, ImageRef, TestCase, UploadedMaterial } from '../types'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg'
 
@@ -10,13 +17,27 @@ interface ChatPanelProps {
   log: ChatMessage[]
   busy: boolean
   onSend: (message: string, file?: File) => void
+  materials: UploadedMaterial[]
+  selectedMaterialIds: string[]
+  testCases: TestCase[]
+  imageMap: Map<number, ImageRef>
+  onChangeSelectedMaterials: (ids: string[]) => void
 }
 
 function isImageFile(file: File): boolean {
   return file.type.startsWith('image/')
 }
 
-export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
+export function ChatPanel({
+  log,
+  busy,
+  onSend,
+  materials,
+  selectedMaterialIds,
+  testCases,
+  imageMap,
+  onChangeSelectedMaterials,
+}: ChatPanelProps) {
   const [draft, setDraft] = useState('')
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [attachedPreviewUrl, setAttachedPreviewUrl] = useState<string | null>(null)
@@ -24,6 +45,35 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
   const logEndRef = useRef<HTMLDivElement>(null)
   const { open: openPreview, lightbox } = useImageLightbox()
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+
+  // 送出前粗估這次請求的內容量會不會讓模型處理逾時（見 materialRisk.ts 的係數
+  // 說明），過量就直接擋下送出，而不是讓使用者等到卡住才知道——2026-08-28
+  // 曾經因為同一個對話勾了 28 張截圖，讓呼叫模型連續兩次都卡了將近 5 分鐘才
+  // 失敗，這裡的目的就是提前攔下同一種情況。
+  const overloaded = useMemo(
+    () => isOverloaded({ materials, selectedMaterialIds, testCases, chatLog: log }),
+    [materials, selectedMaterialIds, testCases, log],
+  )
+  const estimatedSeconds = useMemo(
+    () => estimateProcessingSeconds({ materials, selectedMaterialIds, testCases, chatLog: log }),
+    [materials, selectedMaterialIds, testCases, log],
+  )
+  const unrelatedSuggestions = useMemo(
+    () =>
+      overloaded
+        ? findLikelyUnrelatedImageMaterials(draft, materials, selectedMaterialIds, testCases, imageMap)
+        : [],
+    [overloaded, draft, materials, selectedMaterialIds, testCases, imageMap],
+  )
+
+  const handleUnselectSuggestions = () => {
+    const removeIds = new Set(unrelatedSuggestions.map((m) => m.id))
+    onChangeSelectedMaterials(selectedMaterialIds.filter((id) => !removeIds.has(id)))
+  }
+
+  const handleAddSuggestedMaterials = (suggested: UploadedMaterial[]) => {
+    onChangeSelectedMaterials([...selectedMaterialIds, ...suggested.map((m) => m.id)])
+  }
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ block: 'end' })
@@ -39,7 +89,7 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
     return () => clearInterval(timer)
   }, [busy])
 
-  const canSend = (draft.trim() || attachedFile) && !busy
+  const canSend = (draft.trim() || attachedFile) && !busy && !overloaded
 
   const attachFile = (file: File) => {
     setAttachedFile(file)
@@ -93,12 +143,33 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
                     ? `有 ${entry.questions.length} 個問題需要您協助確認：`
                     : '有一個問題需要您協助確認：'}
                 </div>
-                {entry.questions.map((q, qIdx) => (
-                  <div className="question-list-item" key={q.id}>
-                    <span className="question-index">Q{qIdx + 1}.</span> {q.question}
-                    {q.context && <span className="question-context">依據：{q.context}</span>}
-                  </div>
-                ))}
+                {entry.questions.map((q, qIdx) => {
+                  const relevantSuggestions = findLikelyRelevantUnselectedMaterials(
+                    q,
+                    materials,
+                    selectedMaterialIds,
+                  )
+                  return (
+                    <div className="question-list-item" key={q.id}>
+                      <span className="question-index">Q{qIdx + 1}.</span> {q.question}
+                      {q.context && <span className="question-context">依據：{q.context}</span>}
+                      {relevantSuggestions.length > 0 && (
+                        <div className="question-material-suggestion">
+                          <span>
+                            💡 素材庫裡的「{relevantSuggestions.map((m) => m.filename).join('、')}」看起來可能跟這個問題有關（僅依檔名／說明文字比對，不保證真的相關），要加入使用中的素材嗎？
+                          </span>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => handleAddSuggestedMaterials(relevantSuggestions)}
+                          >
+                            加入這 {relevantSuggestions.length} 項
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             ) : (
               <>
@@ -147,6 +218,22 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
         </div>
       )}
 
+      {overloaded && (
+        <div className="chat-overload-warning">
+          <div className="chat-overload-warning-text">
+            ⚠️ 目前勾選的素材內容量偏大（估計需要 {Math.round(estimatedSeconds)} 秒以上），容易讓模型處理逾時，暫時無法送出。請先到上方「使用中的素材」取消勾選一些跟這次訊息無關的素材——圖片消耗的資源通常遠高於文字內容，建議優先考慮取消勾選圖片類素材。
+          </div>
+          {unrelatedSuggestions.length > 0 && (
+            <div className="chat-overload-suggestions">
+              <span>看起來跟這則訊息無關的素材：{unrelatedSuggestions.map((m) => m.filename).join('、')}</span>
+              <button type="button" className="secondary" onClick={handleUnselectSuggestions}>
+                取消勾選這 {unrelatedSuggestions.length} 項
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="chat-input-row">
         <input
           ref={fileInputRef}
@@ -175,9 +262,20 @@ export function ChatPanel({ log, busy, onSend }: ChatPanelProps) {
             }
           }}
         />
-        <button disabled={!canSend} onClick={submit}>
-          送出
-        </button>
+        {overloaded ? (
+          // 這裡刻意不用原生 disabled 屬性——瀏覽器不會對已停用的表單元件觸發
+          // mouseover/mouseenter，Tooltip 就永遠不會顯示。改用 aria-disabled
+          // 加不掛 onClick，視覺上一樣不可點擊，但滑鼠事件照常觸發。
+          <Tooltip label="素材內容量偏大，容易讓模型處理逾時，請先取消勾選部分素材再送出" wrap>
+            <button type="button" className="button-disabled-hoverable" aria-disabled="true">
+              送出
+            </button>
+          </Tooltip>
+        ) : (
+          <button disabled={!canSend} onClick={submit}>
+            送出
+          </button>
+        )}
       </div>
       {lightbox}
     </>

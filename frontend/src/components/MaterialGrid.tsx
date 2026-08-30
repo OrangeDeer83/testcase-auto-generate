@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
+import type { MaterialUsage } from '../materialUsage'
 import type { UploadedMaterial } from '../types'
 import { MaterialRow } from './MaterialRow'
 import { ModalOverlay } from './ModalOverlay'
@@ -25,6 +26,11 @@ interface MaterialGridProps {
   onToggleSelect?: (id: string) => void
   /** 有給才會在格子最後多一張「+ 新增素材」卡片。 */
   onAddClick?: () => void
+  /** 有給才會在圖片類素材卡片上顯示「已被 N 筆用例引用／尚未被引用」的標籤——
+   * 只有已經產生過用例的對話才有意義，沒給就不顯示，不要顯示一個永遠是 0 的
+   * 誤導性標籤。取消勾選被「尚未鎖定」的用例引用的素材時，會另外跳出確認，
+   * 因為之後模型再對話會失去這個素材的依據。 */
+  usageCounts?: Map<string, MaterialUsage>
 }
 
 /** 素材卡片格：專案素材庫、對話素材選取畫面共用同一套排版跟編輯視窗。 */
@@ -38,6 +44,7 @@ export function MaterialGrid({
   selectedIds,
   onToggleSelect,
   onAddClick,
+  usageCounts,
 }: MaterialGridProps) {
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null)
   const editingMaterial = materials.find((m) => m.id === editingMaterialId) ?? null
@@ -92,6 +99,20 @@ export function MaterialGrid({
     }
   }
 
+  const handleToggleSelect = (material: UploadedMaterial, currentlySelected: boolean) => {
+    if (!onToggleSelect) return
+    const unlockedCaseNames = usageCounts?.get(material.id)?.unlockedCaseNames ?? []
+    if (currentlySelected && unlockedCaseNames.length > 0) {
+      const confirmed = window.confirm(
+        `以下尚未鎖定的用例是根據「${material.filename}」寫的：\n\n` +
+          unlockedCaseNames.map((name) => `・${name}`).join('\n') +
+          '\n\n取消勾選之後，模型再對話時會失去這個素材的依據，之後的修改可能無法再對照原始素材確認。確定要取消勾選嗎？',
+      )
+      if (!confirmed) return
+    }
+    onToggleSelect(material.id)
+  }
+
   const handleDeleteClick = (e: MouseEvent<HTMLButtonElement>, material: UploadedMaterial) => {
     e.stopPropagation()
     if (
@@ -139,6 +160,10 @@ export function MaterialGrid({
           const mergeIndex = mergeSelected.indexOf(material.id)
           const mergeEligible =
             mergeIndex >= 0 || mergeSelected.length === 0 || material.kind === 'image'
+          const isImageLike = material.kind === 'image' || (material.embedded_images?.length ?? 0) > 0
+          const usage = usageCounts?.get(material.id)
+          const usageCount = usage?.total ?? 0
+          const unlockedCount = usage?.unlockedCaseNames.length ?? 0
           return (
             <div
               key={material.id}
@@ -162,7 +187,7 @@ export function MaterialGrid({
                   checked={selected}
                   disabled={busy}
                   onClick={(e) => e.stopPropagation()}
-                  onChange={() => onToggleSelect(material.id)}
+                  onChange={() => handleToggleSelect(material, selected)}
                 />
               )}
               <span className="material-card-thumb">
@@ -182,6 +207,23 @@ export function MaterialGrid({
               <Tooltip label={material.filename}>
                 <span className="material-card-name">{material.filename}</span>
               </Tooltip>
+              {usageCounts && isImageLike && (
+                <Tooltip
+                  label={
+                    usageCount === 0
+                      ? '目前沒有任何測試用例引用這個素材，取消勾選應該不影響已產生的內容'
+                      : unlockedCount > 0
+                        ? `已被 ${usageCount} 筆測試用例引用，其中 ${unlockedCount} 筆尚未鎖定——取消勾選後模型再對話會失去這個素材的依據`
+                        : `已被 ${usageCount} 筆測試用例引用，且都已鎖定，取消勾選不會受影響`
+                  }
+                >
+                  <span
+                    className={`material-card-usage-badge${usageCount > 0 ? ' material-card-usage-badge-used' : ''}`}
+                  >
+                    {usageCount > 0 ? `已用 ${usageCount}` : '未使用'}
+                  </span>
+                </Tooltip>
+              )}
               {mergeMode
                 ? mergeEligible && (
                     <span className="material-card-merge-badge" aria-hidden="true">

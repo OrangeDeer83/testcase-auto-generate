@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
 import {
   addTextMaterial,
@@ -20,11 +20,12 @@ import {
 } from '../api'
 import { FloatingChat } from '../components/FloatingChat'
 import { MaterialSelector } from '../components/MaterialSelector'
-import { MaterialsModal } from '../components/MaterialsModal'
+import { ModalOverlay } from '../components/ModalOverlay'
 import { TestCaseTable } from '../components/TestCaseTable'
 import { Tooltip } from '../components/Tooltip'
 import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
 import { newId } from '../id'
+import { countMaterialUsage } from '../materialUsage'
 import { useDuplicateTabWarning } from '../useDuplicateTabWarning'
 import type { ShellContext } from './ProjectLayout'
 import type { ChatMessage, GenerationResult, ImageRef, UploadedMaterial } from '../types'
@@ -457,6 +458,10 @@ export function WorkspacePage() {
   const hasResult = result.test_cases.length > 0 || result.clarification_questions.length > 0
   const lockedCount = result.test_cases.filter((tc) => tc.locked).length
   const allLocked = result.test_cases.length > 0 && lockedCount === result.test_cases.length
+  const materialUsageCounts = useMemo(
+    () => countMaterialUsage(result.test_cases, imageMap),
+    [result.test_cases, imageMap],
+  )
 
   if (!loaded) return <p className="subtitle">載入中…</p>
 
@@ -587,14 +592,39 @@ export function WorkspacePage() {
         />
       </div>
 
-      <FloatingChat log={chatLog} busy={busy} onSend={handleSendMessage} />
+      <FloatingChat
+        log={chatLog}
+        busy={busy}
+        onSend={handleSendMessage}
+        materials={materials}
+        selectedMaterialIds={selectedMaterialIds}
+        testCases={result.test_cases}
+        imageMap={imageMap}
+        onChangeSelectedMaterials={handleSelectedMaterialsChange}
+      />
 
       {showMaterials && (
-        <MaterialsModal
-          materials={materials.filter((m) => selectedMaterialIds.includes(m.id))}
-          title="這個對話使用中的素材"
-          onClose={() => setShowMaterials(false)}
-        />
+        <ModalOverlay onClose={() => setShowMaterials(false)}>
+          <div className="modal-header">
+            <h2>調整這個對話使用中的素材</h2>
+            <button className="secondary" onClick={() => setShowMaterials(false)}>
+              關閉
+            </button>
+          </div>
+          <MaterialSelector
+            materials={materials}
+            selectedIds={selectedMaterialIds}
+            busy={busy}
+            onChange={handleSelectedMaterialsChange}
+            onUpdateMaterial={handleUpdateMaterial}
+            onAddFiles={handleAddFilesToSelector}
+            onAddText={handleAddTextToSelector}
+            onRemoveMaterial={handleRemoveMaterial}
+            onMergeMaterials={handleMergeMaterials}
+            onUngroupImage={handleUngroupImage}
+            usageCounts={materialUsageCounts}
+          />
+        </ModalOverlay>
       )}
 
       {conflictToast && <div className="conflict-toast">{conflictToast}</div>}

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { ClipboardEvent } from 'react'
 import { getPastedImageFile } from '../clipboardImage'
+import type { MaterialUsage } from '../materialUsage'
 import type { UploadedMaterial } from '../types'
 import { MaterialGrid } from './MaterialGrid'
 
@@ -21,6 +22,7 @@ interface MaterialSelectorProps {
   onRemoveMaterial: (id: string) => void
   onMergeMaterials: (ids: string[]) => Promise<void>
   onUngroupImage: (materialId: string, index: number) => void
+  usageCounts?: Map<string, MaterialUsage>
 }
 
 export function MaterialSelector({
@@ -34,6 +36,7 @@ export function MaterialSelector({
   onRemoveMaterial,
   onMergeMaterials,
   onUngroupImage,
+  usageCounts,
 }: MaterialSelectorProps) {
   const selectedSet = new Set(selectedIds)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -123,6 +126,7 @@ export function MaterialSelector({
               selectedIds={selectedSet}
               onToggleSelect={toggle}
               onAddClick={focusUpload}
+              usageCounts={usageCounts}
             />
           )}
         </div>
