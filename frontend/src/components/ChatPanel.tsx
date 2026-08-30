@@ -221,7 +221,7 @@ export function ChatPanel({
       {overloaded && (
         <div className="chat-overload-warning">
           <div className="chat-overload-warning-text">
-            ⚠️ 目前勾選的素材內容量偏大（估計需要 {Math.round(estimatedSeconds)} 秒以上），容易讓模型處理逾時，暫時無法送出。請先到上方「使用中的素材」取消勾選一些跟這次訊息無關的素材。
+            ⚠️ 目前勾選的素材內容量偏大（估計需要 {Math.round(estimatedSeconds)} 秒以上），容易讓模型處理逾時，暫時無法送出。請先到上方「使用中的素材」取消勾選一些跟這次訊息無關的素材——圖片消耗的資源通常遠高於文字內容，建議優先考慮取消勾選圖片類素材。
           </div>
           {unrelatedSuggestions.length > 0 && (
             <div className="chat-overload-suggestions">
