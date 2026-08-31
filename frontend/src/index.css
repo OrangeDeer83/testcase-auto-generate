@@ -1759,12 +1759,16 @@ button.secondary:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 14px;
+  /* 原本用 margin-bottom 留白，但 margin 不算在這個元素自己的 box 裡，蓋不到
+     background——position: sticky 固定的只有元素本身的 box，捲動到它下面那一小段
+     margin 範圍時，底下的用例卡片會直接露出來，看起來像從標題列底下飄過去。
+     改成整段留白都用 padding，讓灰底背景整片往下延伸蓋住，不留任何沒上色的縫。 */
+  padding: 4px 0 20px;
   position: sticky;
   top: 0;
   background: var(--color-bg);
-  padding: 4px 0 10px;
-  z-index: 5;
+  border-bottom: 1px solid var(--color-border-soft);
+  z-index: 10;
 }
 
 .workspace-title-input {
