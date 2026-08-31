@@ -108,8 +108,8 @@ export function MaterialGrid({
 
   const handleToggleSelect = (material: UploadedMaterial, currentlySelected: boolean) => {
     if (!onToggleSelect) return
-    const unlockedCaseNames = usageCounts?.get(material.id)?.unlockedCaseNames ?? []
-    if (currentlySelected && unlockedCaseNames.length > 0) {
+    const unlockedCases = usageCounts?.get(material.id)?.unlockedCases ?? []
+    if (currentlySelected && unlockedCases.length > 0) {
       setUnlockRiskMaterialId(material.id)
       return
     }
@@ -171,7 +171,7 @@ export function MaterialGrid({
           const isImageLike = material.kind === 'image' || (material.embedded_images?.length ?? 0) > 0
           const usage = usageCounts?.get(material.id)
           const usageCount = usage?.total ?? 0
-          const unlockedCount = usage?.unlockedCaseNames.length ?? 0
+          const unlockedCount = usage?.unlockedCases.length ?? 0
           return (
             <div
               key={material.id}
@@ -302,22 +302,26 @@ export function MaterialGrid({
           <p className="subtitle" style={{ marginTop: 0 }}>
             「{unlockRiskMaterial.filename}」目前被以下測試用例引用：
           </p>
-          {!!unlockRiskUsage?.lockedCaseNames.length && (
+          {!!unlockRiskUsage?.lockedCases.length && (
             <div className="material-unlock-risk-group material-unlock-risk-group-safe">
               <p className="material-unlock-risk-group-title">✓ 已鎖定，取消勾選不受影響</p>
               <ul>
-                {unlockRiskUsage.lockedCaseNames.map((name) => (
-                  <li key={name}>{name}</li>
+                {unlockRiskUsage.lockedCases.map((c) => (
+                  <li key={c.index}>
+                    第 {c.index} 筆：{c.name}
+                  </li>
                 ))}
               </ul>
             </div>
           )}
-          {!!unlockRiskUsage?.unlockedCaseNames.length && (
+          {!!unlockRiskUsage?.unlockedCases.length && (
             <div className="material-unlock-risk-group material-unlock-risk-group-warning">
               <p className="material-unlock-risk-group-title">⚠️ 尚未鎖定，需要您先確認</p>
               <ul>
-                {unlockRiskUsage.unlockedCaseNames.map((name) => (
-                  <li key={name}>{name}</li>
+                {unlockRiskUsage.unlockedCases.map((c) => (
+                  <li key={c.index}>
+                    第 {c.index} 筆：{c.name}
+                  </li>
                 ))}
               </ul>
               <p className="material-unlock-risk-note">

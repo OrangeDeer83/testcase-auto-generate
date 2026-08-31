@@ -8,11 +8,13 @@
 
 **修法**：`materialUsage.ts` 的 `MaterialUsage` 除了原本的 `unlockedCaseNames`，新增對稱的 `lockedCaseNames`，兩組都用名稱列出來，不是只給數字。`MaterialGrid.tsx` 把 `window.confirm` 換成用既有的 `ModalOverlay` 元件自建的彈出視窗：綠色區塊列出「✓ 已鎖定，取消勾選不受影響」的用例，黃色區塊列出「⚠️ 尚未鎖定，需要您先確認」的用例，底下才是「取消」／「確定取消勾選」兩個按鈕。跟畫面其他警示（工作區的過量提示、鎖定進度）用同一套顏色語言（綠＝安全、黃＝需要留意），使用者不用重新學一套新的視覺規則。
 
+後續使用者又提出：光看名稱還不夠方便，最好能直接告訴使用者這是「第幾筆」用例，才能快速對照表格找到它。因此把 `lockedCaseNames`／`unlockedCaseNames`（純字串陣列）改成 `lockedCases`／`unlockedCases`（`{ index, name }` 物件陣列），`index` 直接取用例在 `test_cases` 陣列裡的位置（`caseIndex + 1`），跟表格上每筆用例卡片左側顯示的編號完全對應。清單改成顯示「第 N 筆：用例名稱」，不再只有名稱。
+
 **背後的通用觀念**：**瀏覽器原生的 `window.confirm`／`alert` 只適合「一句話講得完」的簡單情境**——它沒有任何排版能力（不能分段落、不能用顏色區分輕重、不能加清單），一旦要傳達的資訊有結構（這裡是「兩組不同嚴重程度的清單」），硬塞進一段純文字只會讓使用者要自己在腦中重新解析。這個專案已經有現成的 `ModalOverlay` 元件跟一套跨畫面一致的警示配色（綠色＝安全、黃色＝需要留意），遇到這類「原生對話框資訊量不夠」的情況，直接重用既有的彈出視窗基礎設施，比硬湊 `window.confirm` 的文字排版更符合使用者體驗，付出的開發成本也不高。
 
-**檔案**：`frontend/src/materialUsage.ts`（`MaterialUsage` 新增 `lockedCaseNames`）、`frontend/src/materialUsage.test.ts`（更新測試涵蓋兩組名單）、`frontend/src/components/MaterialGrid.tsx`（新增 `unlockRiskMaterialId` 狀態與自訂警示視窗，取代 `window.confirm`）、`frontend/src/index.css`（新增 `.material-unlock-risk-*` 系列樣式）
+**檔案**：`frontend/src/materialUsage.ts`（`MaterialUsage` 新增 `lockedCases`／`unlockedCases`，元素含 `index`／`name`）、`frontend/src/materialUsage.test.ts`（更新測試涵蓋兩組名單與編號）、`frontend/src/components/MaterialGrid.tsx`（新增 `unlockRiskMaterialId` 狀態與自訂警示視窗，取代 `window.confirm`；清單顯示「第 N 筆：名稱」）、`frontend/src/index.css`（新增 `.material-unlock-risk-*` 系列樣式）
 
-**驗證方式**：`npx tsc --noEmit`、`npx vitest run`（30 個測試全過）。瀏覽器實測（dev 環境 18002/5175）：讓同一個素材同時被一筆已鎖定、一筆尚未鎖定的用例引用，取消勾選時確認自訂視窗正確分兩組列出用例名稱（不是只顯示數字）；點「取消」確認視窗關閉且勾選狀態不變；點「確定取消勾選」確認視窗關閉且勾選狀態真的變成未勾選；測試完成後已還原素材勾選與 `based_on_images`。
+**驗證方式**：`npx tsc --noEmit`、`npx vitest run`（31 個測試全過）。瀏覽器實測（dev 環境 18002/5175）：讓對話裡「第 1 筆」（已鎖定）跟「第 5 筆」（尚未鎖定）兩筆用例同時引用同一個素材，取消勾選時確認自訂視窗正確分兩組列出「第 1 筆：⋯」「第 5 筆：⋯」（編號跟畫面上表格顯示的一致，不是只顯示名稱）；點「取消」確認視窗關閉且勾選狀態不變；點「確定取消勾選」確認視窗關閉且勾選狀態真的變成未勾選；測試完成後已還原素材勾選與 `based_on_images`。
 
 ## 2026-08-29 取消勾選素材前，提醒可能影響尚未鎖定的用例
 
