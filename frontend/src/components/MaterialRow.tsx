@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UploadedMaterial } from '../types'
+import { ConfirmDialog } from './ConfirmDialog'
 import { useImageLightbox } from './ImageLightbox'
 import { Tooltip } from './Tooltip'
 
@@ -39,6 +40,7 @@ export function MaterialRow({
   const [nameBase, setNameBase] = useState(initialBase)
   const [description, setDescription] = useState(material.description)
   const [content, setContent] = useState(material.text ?? '')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const { open: openPreview, lightbox } = useImageLightbox()
 
   // 改名如果因為名稱重複被後端拒絕，material.filename 不會變，這裡要跟著回復顯示，
@@ -105,15 +107,7 @@ export function MaterialRow({
           <button
             className="secondary material-remove"
             disabled={busy}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `確定要刪除素材「${material.filename}」嗎？如果已經在某些對話裡用過，那些對話紀錄裡的圖片／內容會變成找不到，且無法復原。`,
-                )
-              ) {
-                onRemove(material.id)
-              }
-            }}
+            onClick={() => setShowDeleteConfirm(true)}
           >
             刪除
           </button>
@@ -173,6 +167,19 @@ export function MaterialRow({
         </div>
       )}
       {lightbox}
+      {showDeleteConfirm && onRemove && (
+        <ConfirmDialog
+          title="刪除素材"
+          message={`確定要刪除素材「${material.filename}」嗎？如果已經在某些對話裡用過，那些對話紀錄裡的圖片／內容會變成找不到，且無法復原。`}
+          confirmLabel="確定刪除"
+          danger
+          onConfirm={() => {
+            onRemove(material.id)
+            setShowDeleteConfirm(false)
+          }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </li>
   )
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import type { MaterialUsage } from '../materialUsage'
 import type { UploadedMaterial } from '../types'
+import { ConfirmDialog } from './ConfirmDialog'
 import { MaterialRow } from './MaterialRow'
 import { ModalOverlay } from './ModalOverlay'
 import { Tooltip } from './Tooltip'
@@ -55,6 +56,9 @@ export function MaterialGrid({
   const [unlockRiskMaterialId, setUnlockRiskMaterialId] = useState<string | null>(null)
   const unlockRiskMaterial = materials.find((m) => m.id === unlockRiskMaterialId) ?? null
   const unlockRiskUsage = unlockRiskMaterialId ? usageCounts?.get(unlockRiskMaterialId) : undefined
+
+  const [deleteMaterialId, setDeleteMaterialId] = useState<string | null>(null)
+  const deleteMaterial = materials.find((m) => m.id === deleteMaterialId) ?? null
 
   // 合併模式：跟「勾選要送給模型的素材」是兩件獨立的事，各自管自己的狀態，
   // 避免同一個勾選框身兼兩種語意。mergeSelected 用陣列保留選取順序——
@@ -123,13 +127,12 @@ export function MaterialGrid({
 
   const handleDeleteClick = (e: MouseEvent<HTMLButtonElement>, material: UploadedMaterial) => {
     e.stopPropagation()
-    if (
-      window.confirm(
-        `確定要刪除素材「${material.filename}」嗎？如果已經在某些對話裡用過，那些對話紀錄裡的圖片／內容會變成找不到，且無法復原。`,
-      )
-    ) {
-      onRemoveMaterial?.(material.id)
-    }
+    setDeleteMaterialId(material.id)
+  }
+
+  const confirmDeleteMaterial = () => {
+    if (deleteMaterialId) onRemoveMaterial?.(deleteMaterialId)
+    setDeleteMaterialId(null)
   }
 
   return (
@@ -292,52 +295,57 @@ export function MaterialGrid({
       )}
 
       {unlockRiskMaterial && (
-        <ModalOverlay onClose={() => setUnlockRiskMaterialId(null)} panelClassName="material-unlock-risk-panel">
-          <div className="modal-header">
-            <h2>取消勾選前請確認</h2>
-            <button className="secondary" onClick={() => setUnlockRiskMaterialId(null)}>
-              關閉
-            </button>
-          </div>
-          <p className="subtitle" style={{ marginTop: 0 }}>
-            「{unlockRiskMaterial.filename}」目前被以下測試用例引用：
-          </p>
-          {!!unlockRiskUsage?.lockedCases.length && (
-            <div className="material-unlock-risk-group material-unlock-risk-group-safe">
-              <p className="material-unlock-risk-group-title">✓ 已鎖定，取消勾選不受影響</p>
-              <ul>
-                {unlockRiskUsage.lockedCases.map((c) => (
-                  <li key={c.index}>
-                    第 {c.index} 筆：{c.name}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {!!unlockRiskUsage?.unlockedCases.length && (
-            <div className="material-unlock-risk-group material-unlock-risk-group-warning">
-              <p className="material-unlock-risk-group-title">⚠️ 尚未鎖定，需要您先確認</p>
-              <ul>
-                {unlockRiskUsage.unlockedCases.map((c) => (
-                  <li key={c.index}>
-                    第 {c.index} 筆：{c.name}
-                  </li>
-                ))}
-              </ul>
-              <p className="material-unlock-risk-note">
-                取消勾選之後，模型再對話時會失去這個素材的依據，之後的修改可能無法再對照原始素材確認。
+        <ConfirmDialog
+          title="取消勾選前請確認"
+          confirmLabel="確定取消勾選"
+          panelClassName="material-unlock-risk-panel"
+          onConfirm={confirmUnlockRiskToggle}
+          onCancel={() => setUnlockRiskMaterialId(null)}
+          message={
+            <>
+              <p className="subtitle" style={{ marginTop: 0 }}>
+                「{unlockRiskMaterial.filename}」目前被以下測試用例引用：
               </p>
-            </div>
-          )}
-          <div className="material-unlock-risk-actions">
-            <button type="button" className="secondary" onClick={() => setUnlockRiskMaterialId(null)}>
-              取消
-            </button>
-            <button type="button" onClick={confirmUnlockRiskToggle}>
-              確定取消勾選
-            </button>
-          </div>
-        </ModalOverlay>
+              {!!unlockRiskUsage?.lockedCases.length && (
+                <div className="material-unlock-risk-group material-unlock-risk-group-safe">
+                  <p className="material-unlock-risk-group-title">✓ 已鎖定，取消勾選不受影響</p>
+                  <ul>
+                    {unlockRiskUsage.lockedCases.map((c) => (
+                      <li key={c.index}>
+                        第 {c.index} 筆：{c.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!!unlockRiskUsage?.unlockedCases.length && (
+                <div className="material-unlock-risk-group material-unlock-risk-group-warning">
+                  <p className="material-unlock-risk-group-title">⚠️ 尚未鎖定，需要您先確認</p>
+                  <ul>
+                    {unlockRiskUsage.unlockedCases.map((c) => (
+                      <li key={c.index}>
+                        第 {c.index} 筆：{c.name}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="material-unlock-risk-note">
+                    取消勾選之後，模型再對話時會失去這個素材的依據，之後的修改可能無法再對照原始素材確認。
+                  </p>
+                </div>
+              )}
+            </>
+          }
+        />
+      )}
+      {deleteMaterial && (
+        <ConfirmDialog
+          title="刪除素材"
+          message={`確定要刪除素材「${deleteMaterial.filename}」嗎？如果已經在某些對話裡用過，那些對話紀錄裡的圖片／內容會變成找不到，且無法復原。`}
+          confirmLabel="確定刪除"
+          danger
+          onConfirm={confirmDeleteMaterial}
+          onCancel={() => setDeleteMaterialId(null)}
+        />
       )}
     </>
   )

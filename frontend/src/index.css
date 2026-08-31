@@ -1227,7 +1227,11 @@ h2 {
   border-color: #2f9e5c;
 }
 
-.material-unlock-risk-panel {
+/* 用複合選擇器（.confirm-dialog-panel.material-unlock-risk-panel）疊加在基礎的
+   .confirm-dialog-panel 之上，不管兩條規則誰寫在檔案裡比較後面都一定是這條贏，
+   不會因為之後檔案裡的規則搬動順序而悄悄變回預設寬度（同樣的理由見上面
+   .modal-overlay.image-viewer-overlay 那則註解）。 */
+.confirm-dialog-panel.material-unlock-risk-panel {
   max-width: 480px;
 }
 
@@ -2431,6 +2435,31 @@ tr.cell-highlight td {
   margin: 0;
   font-size: 1.05rem;
   color: var(--color-primary);
+}
+
+.confirm-dialog-panel {
+  max-width: 440px;
+}
+
+.confirm-dialog-message {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.confirm-dialog-danger-button {
+  background: #b3312c;
+}
+
+.confirm-dialog-danger-button:hover:not(:disabled) {
+  background: #942720;
 }
 
 .material-detail {
