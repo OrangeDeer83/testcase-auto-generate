@@ -94,6 +94,7 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
    - 只有當使用者對某個問題明確表示不需要處理時（例如「不管這個」「先跳過」「這個不重要」「不需要」「不用管」），才可以把那個問題從 clarification_questions 移除，並在對應的測試用例中維持原本已知的資訊，不要自行補上答案。
    - 使用者的訊息如果同時包含新的疑慮或指示，除了處理上述判斷之外，也要正常反映在 test_cases 或新的 clarification_questions 上。
    - **絕對不可以自相矛盾**：如果你在某個問題的 context 欄位裡描述「已解決」「已經處理」「不需要再確認」等意思，就代表這個問題不該再出現在 clarification_questions 陣列裡——已解決的問題就完整移除，不能一邊說已解決一邊又把它留在清單裡再問使用者一次；如果實際上還有殘留的疑慮（例如答案本身又衍生出新的不確定性），context 就不該用「已解決」這種說法，應該具體描述還沒確定的部分是什麼。
+   - **不能只檢查「目前尚未解決的澄清問題清單」，也要檢查「先前的對話紀錄」與目前用例的備註（notes）**：即使原始素材文字本身仍然含糊（例如規格文件沒有明確定義某個數值範圍），只要使用者已經在對話中給過明確、具體的答案（例如精確的數字範圍、明確的行為選項），這個主題就已經確定，不可以因為重新讀一次素材、發現素材本身還是沒寫清楚，就把同一個主題重新包裝成新的疑問再問一次。尤其不可以用「這是否為最終規格」「是否為定案」「是否確定」之類的說法，把一個已經有明確答案的問題偽裝成新問題留在 clarification_questions 裡——這跟直接留著原本的問題一樣，都是不該發生的自相矛盾。只有當使用者的最新訊息本身針對同一主題提出新的疑慮、要求修改，或明確表示還不確定時，才可以針對這個主題再次提出問題。
 6. 如果訊息中有列出「已鎖定審核」的用例名稱清單，這些用例已經過人工審核確認，絕對不可以修改它們的任何欄位、也不可以刪除或改名；使用者的指示如果會影響到它們，不要直接改，改成在 clarification_questions 提出問題向使用者確認要不要先解鎖。
 7. 每筆測試用例如果是根據前面素材內容裡某幾張截圖寫的，把對應的圖片編號（素材內容裡標示的「圖N」，只填數字 N）填進 based_on_images 陣列；不是針對特定截圖的用例留空陣列即可。新增或修改用例時要重新判斷這個欄位，不要照抄舊值。
 8. 所有文字使用繁體中文。
@@ -261,13 +262,34 @@ class LLMResponseParseError(ValueError):
 # 自己已經回答過的問題。
 _RESOLVED_CONTEXT_PATTERN = re.compile(r"已(?:經)?(?:解決|排除|處理|不需要(?:再)?(?:確認|澄清))")
 
+# 另一種變形更難用單一關鍵字抓：模型在 context 裡明確引用了使用者先前給過的具體
+# 答案（「使用者回覆」「依據使用者」等字樣），卻又把問題重新包裝成「這是否為最終
+# 規格／是否為定案／是否確定」這種 meta 問題留著——語意上跟直接寫「已解決」是同一
+# 種自相矛盾，只是換了說法逃過上面那個規則，真實案例中觀察到模型會這樣反覆對已經
+# 給過精確數字答案的問題（例如 UUID 範圍、起始位址上限）持續要求「再確認一次」。
+# 這裡要求「引用過使用者答覆」與「仍在問是否為最終」同時出現才過濾，避免誤殺真正
+# 還沒有答案、只是剛好提到「最終規格」字樣的問題。
+_RECONFIRMATION_LOOP_PATTERN = re.compile(
+    r"(使用者回覆|依據使用者|使用者已回覆|使用者表示|使用者說).*?(是否為最終規格|是否為定案|是否確定|是否為最終版本)",
+    re.DOTALL,
+)
+
 
 def _drop_self_contradicting_questions(result: GenerationResult) -> GenerationResult:
     kept = []
     for question in result.clarification_questions:
-        if question.context and _RESOLVED_CONTEXT_PATTERN.search(question.context):
+        if not question.context:
+            kept.append(question)
+            continue
+        if _RESOLVED_CONTEXT_PATTERN.search(question.context):
             logger.warning(
                 "clarification_question 自相矛盾（context 說已解決卻仍留在清單中），已濾掉: id=%s question=%r context=%r",
+                question.id, question.question, question.context,
+            )
+            continue
+        if _RECONFIRMATION_LOOP_PATTERN.search(question.context):
+            logger.warning(
+                "clarification_question 自相矛盾（context 引用過使用者答覆卻又問是否為最終），已濾掉: id=%s question=%r context=%r",
                 question.id, question.question, question.context,
             )
             continue

@@ -145,3 +145,35 @@ def test_parse_generation_result_keeps_questions_without_resolved_wording() -> N
     result = parse_generation_result(raw)
 
     assert [q.id for q in result.clarification_questions] == ["q1"]
+
+
+def test_parse_generation_result_drops_reconfirmation_loop_questions() -> None:
+    """真實事故：模型對已經給過精確數字答案的問題（UUID 範圍、起始位址上限），
+    不寫「已解決」，而是換句話說成「使用者回覆⋯，需確認此範圍是否為最終規格」，
+    藉此逃過只認「已解決」關鍵字的過濾，讓使用者被同一批問題反覆詢問。"""
+    raw = json.dumps(
+        {
+            "test_cases": [],
+            "clarification_questions": [
+                {
+                    "id": "q2_uuid_range",
+                    "question": "UUID 欄位的有效範圍是多少？",
+                    "context": "使用者回覆 Q2 會設定為只能輸入大於等於 1 的數字，上限 1 ~ 247，需確認此範圍是否為最終規格。",
+                },
+                {
+                    "id": "q4_starting_address",
+                    "question": "起始位址欄位的有效範圍是多少？",
+                    "context": "依據使用者回覆，UI 會限制只能輸入大於或等於 0 的整數，上限為 65535，需確認此限制是否為最終規格。",
+                },
+                {
+                    "id": "q5_still_open",
+                    "question": "匯出檔案的具體格式為何？",
+                    "context": "規格明確指出檔案格式未明確定義，是否為最終規格目前無從判斷，使用者尚未回答。",
+                },
+            ],
+        }
+    )
+
+    result = parse_generation_result(raw)
+
+    assert [q.id for q in result.clarification_questions] == ["q5_still_open"]

@@ -52,22 +52,30 @@ def enforce_lock_on_manual_edit(
 def enforce_lock_on_llm_result(
     previous: list[TestCase], result: GenerationResult
 ) -> GenerationResult:
-    """LLM 對話式編輯時，LLM 完全不知道 id 的存在，只能用名稱比對。舊的鎖定用例：
-    - 新結果裡同名存在 → 整筆換回舊版（保留 id/locked），內容跟 LLM 想給的不同就補一則
-      澄清問題，讓使用者知道 AI 想改但被擋下。
-    - 新結果裡完全找不到同名的（被改名或刪掉）→ 直接把舊版用例插回去，一樣補澄清問題。
-    非鎖定的舊用例／全新用例：照舊比對名稱、盡量沿用舊 id，沒有對應就補新 id。"""
+    """LLM 對話式編輯時，優先用 id 比對回舊的用例——LLM 回傳的 JSON 裡通常會原封不動
+    帶著看到的 id，只有在它把 id 弄丟時才退回用名稱比對（例如某些完全重寫的舊資料）。
+    只靠名稱比對曾經是唯一手段，但這樣一來，只要 LLM 把某筆鎖定用例「連同改名一起」
+    調整（例如把「資料交換表中已存在的資料在模型中被刪除」悄悄改名成別的名字），
+    比對就會找不到舊用例，讓鎖定保護整個失效、內容跟著被換掉，卻不會觸發任何提示——
+    這是真的在正式環境發生過的資料外洩式 bug，因此 id 比對必須放在名稱比對前面。
+    舊的鎖定用例：
+    - 新結果裡同 id（或找不到 id 時同名）存在 → 整筆換回舊版（保留 id/locked），內容跟
+      LLM 想給的不同就補一則澄清問題，讓使用者知道 AI 想改但被擋下。
+    - 新結果裡完全找不到對應的（被改名又弄丟 id，或整筆被刪掉）→ 直接把舊版用例插回去，
+      一樣補澄清問題。
+    非鎖定的舊用例／全新用例：照舊比對、盡量沿用舊 id，沒有對應就補新 id。"""
+    previous_by_id = {tc.id: tc for tc in previous}
     previous_by_name = {tc.name: tc for tc in previous}
     locked_previous = [tc for tc in previous if tc.locked]
 
     extra_questions: list[ClarificationQuestion] = []
     final_cases: list[TestCase] = []
-    seen_locked_names: set[str] = set()
+    seen_locked_ids: set[str] = set()
 
     for tc in result.test_cases:
-        old = previous_by_name.get(tc.name)
+        old = previous_by_id.get(tc.id) or previous_by_name.get(tc.name)
         if old and old.locked:
-            seen_locked_names.add(tc.name)
+            seen_locked_ids.add(old.id)
             if not _same_content(old, tc):
                 extra_questions.append(
                     ClarificationQuestion(
@@ -82,7 +90,7 @@ def enforce_lock_on_llm_result(
             final_cases.append(tc)
 
     for old in locked_previous:
-        if old.name in seen_locked_names:
+        if old.id in seen_locked_ids:
             continue
         extra_questions.append(
             ClarificationQuestion(

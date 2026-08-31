@@ -27,15 +27,21 @@ function describeStepsDiff(before: TestCase, after: TestCase): string[] {
   return notes
 }
 
-/** 比對聊天前後的測試用例，回傳人類可讀的異動清單（依用例名稱配對，名稱不變就視為同一筆）。 */
+/**
+ * 比對聊天前後的測試用例，回傳人類可讀的異動清單（依用例名稱配對，名稱不變就視為同一筆）。
+ * 新增／修改的項目會附上該用例在「聊天後」清單裡的編號（從 1 開始，對應表格上顯示的
+ * 位置），方便使用者直接去表格裡找到這一筆；已刪除的用例不在聊天後的清單裡了，附編號
+ * 沒有意義，所以不附。
+ */
 export function diffTestCases(before: TestCase[], after: TestCase[]): string[] {
   const changes: string[] = []
   const beforeByName = new Map(before.map((tc) => [tc.name, tc]))
   const afterByName = new Map(after.map((tc) => [tc.name, tc]))
+  const afterIndexByName = new Map(after.map((tc, idx) => [tc.name, idx + 1]))
 
   for (const tc of after) {
     if (!beforeByName.has(tc.name)) {
-      changes.push(`新增用例「${tc.name}」`)
+      changes.push(`第 ${afterIndexByName.get(tc.name)} 筆・新增用例「${tc.name}」`)
     }
   }
 
@@ -65,7 +71,7 @@ export function diffTestCases(before: TestCase[], after: TestCase[]): string[] {
     }
 
     if (fieldNotes.length > 0) {
-      changes.push(`「${tc.name}」${fieldNotes.join('、')}`)
+      changes.push(`第 ${afterIndexByName.get(tc.name)} 筆・「${tc.name}」${fieldNotes.join('、')}`)
     }
   }
 

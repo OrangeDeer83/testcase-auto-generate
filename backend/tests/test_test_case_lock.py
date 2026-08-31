@@ -78,6 +78,25 @@ def test_llm_result_locked_case_removed_by_llm_is_restored() -> None:
     assert any("鎖定用例" in q.question for q in final.clarification_questions)
 
 
+def test_llm_result_locked_case_renamed_by_llm_is_still_protected() -> None:
+    """真實事故：LLM 把鎖定用例的名字也一起改掉，但保留了原本看到的 id。舊版邏輯只靠
+    名稱比對，會找不到舊用例、讓鎖定保護整個失效（改名+改內容都被悄悄接受，且不會有
+    任何提示）。新版邏輯優先用 id 比對，即使改名也要能抓到、擋下這次修改。"""
+    old = _case(name="資料交換表中已存在的資料在模型中被刪除", locked=True, step_desc="原始步驟")
+    renamed_attempt = old.model_copy(
+        update={"name": "Communication Config 模型節點刪除後更新", "locked": False, "notes": "AI 偷改的內容"}
+    )
+    result = GenerationResult(test_cases=[renamed_attempt], clarification_questions=[])
+
+    final = enforce_lock_on_llm_result([old], result)
+
+    assert len(final.test_cases) == 1
+    assert final.test_cases[0].name == "資料交換表中已存在的資料在模型中被刪除"
+    assert final.test_cases[0].locked is True
+    assert final.test_cases[0].notes == ""
+    assert any("已鎖定審核" in q.question for q in final.clarification_questions)
+
+
 def test_llm_result_unlocked_case_keeps_previous_id() -> None:
     old = _case(name="用例B", locked=False)
     llm_new = TestCase(
