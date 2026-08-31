@@ -208,7 +208,13 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
         logger.error("POST /chat conversation=%s 解析失敗: %s", conversation_id, exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+    # 鎖定保護要跟 LLM 實際看到的內容用同一份「之前」基準（payload.current_test_cases，
+    # 上面 build_chat_messages 也是用這份），不能用 conversation.last_result.test_cases。
+    # 前端手動編輯表格是 debounce 1 秒後才真的存檔（見 WorkspacePage.tsx 的自動存檔
+    # effect），如果使用者編輯後不到 1 秒就送出聊天訊息，伺服器端這時候存的
+    # last_result 可能還是編輯前的舊內容；用它當基準比對，會把使用者剛做的合法編輯
+    # 誤判成「跟舊版不同」，連鎖定用例本身都沒被 LLM 動過，也會被這份過期基準覆蓋掉。
+    previous_cases = payload.current_test_cases
     previous_version = conversation.last_result.result_version if conversation.last_result else 0
     result = enforce_lock_on_llm_result(previous_cases, result)
     result.result_version = previous_version + 1
