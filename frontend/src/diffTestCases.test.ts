@@ -29,11 +29,11 @@ describe('diffTestCases', () => {
     expect(diffTestCases(before, after)).toEqual([])
   })
 
-  it('偵測新增用例', () => {
+  it('偵測新增用例，並附上該用例在聊天後清單裡的編號', () => {
     const before: TestCase[] = []
     const after = [makeCase({ name: '新用例' })]
 
-    expect(diffTestCases(before, after)).toEqual(['新增用例「新用例」'])
+    expect(diffTestCases(before, after)).toEqual(['第 1 筆・新增用例「新用例」'])
   })
 
   it('偵測刪除用例', () => {
@@ -43,11 +43,18 @@ describe('diffTestCases', () => {
     expect(diffTestCases(before, after)).toEqual(['刪除用例「舊用例」'])
   })
 
-  it('偵測優先級變更並顯示前後值', () => {
+  it('偵測優先級變更並顯示前後值，附上編號', () => {
     const before = [makeCase({ priority: 'P0' })]
     const after = [makeCase({ priority: 'P1' })]
 
-    expect(diffTestCases(before, after)).toEqual(['「登入成功」優先級從 P0 改成 P1'])
+    expect(diffTestCases(before, after)).toEqual(['第 1 筆・「登入成功」優先級從 P0 改成 P1'])
+  })
+
+  it('編號反映在聊天後清單裡的位置，不是固定第 1 筆', () => {
+    const before = [makeCase({ name: '用例一' }), makeCase({ name: '用例二', priority: 'P0' })]
+    const after = [makeCase({ name: '用例一' }), makeCase({ name: '用例二', priority: 'P1' })]
+
+    expect(diffTestCases(before, after)).toEqual(['第 2 筆・「用例二」優先級從 P0 改成 P1'])
   })
 
   it('偵測步驟數量變化', () => {
@@ -62,7 +69,7 @@ describe('diffTestCases', () => {
       }),
     ]
 
-    expect(diffTestCases(before, after)).toEqual(['「登入成功」新增了 1 個步驟'])
+    expect(diffTestCases(before, after)).toEqual(['第 1 筆・「登入成功」新增了 1 個步驟'])
   })
 
   it('偵測特定步驟內容變化並回報步驟編號', () => {
@@ -76,7 +83,7 @@ describe('diffTestCases', () => {
       }),
     ]
 
-    expect(diffTestCases(before, after)).toEqual(['「登入成功」步驟 2 的內容有調整'])
+    expect(diffTestCases(before, after)).toEqual(['第 1 筆・「登入成功」步驟 2 的內容有調整'])
   })
 
   it('用例改名時視為刪除舊的+新增新的（已知限制：依名稱配對）', () => {
@@ -85,7 +92,7 @@ describe('diffTestCases', () => {
 
     const changes = diffTestCases(before, after)
 
-    expect(changes).toContain('新增用例「新名稱」')
+    expect(changes).toContain('第 1 筆・新增用例「新名稱」')
     expect(changes).toContain('刪除用例「舊名稱」')
   })
 })
