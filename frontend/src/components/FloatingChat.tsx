@@ -6,6 +6,10 @@ import type { ChatMessage, ImageRef, TestCase, UploadedMaterial } from '../types
 interface FloatingChatProps {
   log: ChatMessage[]
   busy: boolean
+  /** busy 這次是什麼時候開始的（ms 時間戳）——用來算「思考中」要顯示的已等待
+   * 秒數，不能只靠 ChatPanel 自己內部從 0 累加，否則視窗關閉重開後會歸零。
+   * busy 為 false 時是 null。 */
+  busyStartedAt: number | null
   onSend: (message: string, file?: File) => void
   materials: UploadedMaterial[]
   selectedMaterialIds: string[]
@@ -27,6 +31,7 @@ const MAX_HEIGHT = 800
 export function FloatingChat({
   log,
   busy,
+  busyStartedAt,
   onSend,
   materials,
   selectedMaterialIds,
@@ -123,6 +128,7 @@ export function FloatingChat({
         <ChatPanel
           log={log}
           busy={busy}
+          busyStartedAt={busyStartedAt}
           onSend={onSend}
           materials={materials}
           selectedMaterialIds={selectedMaterialIds}

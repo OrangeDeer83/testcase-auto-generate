@@ -82,6 +82,13 @@ export function WorkspacePage() {
   const [chatLog, setChatLog] = useState<ChatMessage[]>([])
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
+  // 「思考中」計時器要顯示的是「這次請求真正開始的時間點」，不能只靠 ChatPanel
+  // 自己內部從 0 累加——使用者關閉浮動聊天視窗時 ChatPanel 會被 unmount，重新
+  // 展開後元件重新掛載，內部累加的秒數也會歸零，看起來像「等待時間被重置」。
+  // 這個時間戳存在這一層（跟 busy 一樣，不會因為浮動視窗開關而被 unmount），
+  // ChatPanel 只要用「現在時間 - 這個時間戳」重新算一次即可，不管中途有沒有
+  // 被關閉過，算出來的都還是真正經過的秒數。
+  const [busyStartedAt, setBusyStartedAt] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
   const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
@@ -330,6 +337,7 @@ export function WorkspacePage() {
       return
     }
     setBusy(true)
+    setBusyStartedAt(Date.now())
     setError(null)
     try {
       const res = await generate(projectId, conversationId)
@@ -343,11 +351,13 @@ export function WorkspacePage() {
       setError(err instanceof Error ? err.message : '產生失敗')
     } finally {
       setBusy(false)
+      setBusyStartedAt(null)
     }
   }
 
   const handleSendMessage = async (message: string, file?: File) => {
     setBusy(true)
+    setBusyStartedAt(Date.now())
     setError(null)
     // 送出失敗時（例如模型逾時）要能在對話紀錄裡插入一則錯誤訊息，所以這裡要在
     // try/catch 外面保留一份「目前為止已經確定要顯示」的紀錄；catch 拿不到 try
@@ -428,6 +438,7 @@ export function WorkspacePage() {
       await persistChatLog(logWithError)
     } finally {
       setBusy(false)
+      setBusyStartedAt(null)
     }
   }
 
@@ -612,6 +623,7 @@ export function WorkspacePage() {
       <FloatingChat
         log={chatLog}
         busy={busy}
+        busyStartedAt={busyStartedAt}
         onSend={handleSendMessage}
         materials={materials}
         selectedMaterialIds={selectedMaterialIds}
