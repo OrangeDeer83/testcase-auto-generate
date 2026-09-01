@@ -49,6 +49,44 @@ def enforce_lock_on_manual_edit(
     return result
 
 
+def merge_scoped_llm_result(
+    previous: list[TestCase], scoped_ids: set[str], result: GenerationResult
+) -> GenerationResult:
+    """使用者「針對已選用例提問」時（見 prompt_builder.build_chat_messages 的
+    scoped_ids 參數），LLM 只看得到範圍內用例的完整內容，回傳的 test_cases 陣列
+    也只會包含範圍內的用例——這裡要把這份「只有一部分」的結果，跟範圍外原封不動
+    的既有用例合併回一份完整清單，之後才能照舊流程跑 enforce_lock_on_llm_result、
+    存檔、算 diff。範圍外的用例完全不經過這個函式的任何判斷就直接沿用舊版——LLM
+    根本沒看過它們的內容，不可能是它主動修改的，混進來比對只會製造誤判。
+
+    在「範圍內」比對用 id（LLM 通常會原封不動帶著看到的 id）：
+    - 範圍內的舊用例，LLM 回傳裡有對應 id → 用 LLM 的版本（可能被改過）。
+    - 範圍內的舊用例，LLM 回傳裡找不到對應 id → 視為使用者這次要求刪除，不保留。
+    - LLM 回傳裡出現不屬於任何既有用例的 id → 全新用例，附加在清單最後。
+    """
+    previous_ids = {tc.id for tc in previous}
+    llm_by_id = {tc.id: tc for tc in result.test_cases}
+
+    merged: list[TestCase] = []
+    for tc in previous:
+        if tc.id not in scoped_ids:
+            merged.append(tc)
+            continue
+        replacement = llm_by_id.get(tc.id)
+        if replacement is not None:
+            merged.append(replacement)
+        # 範圍內、LLM 沒有回傳對應 id → 視為刪除，不加入 merged
+
+    for tc in result.test_cases:
+        if tc.id not in previous_ids:
+            merged.append(tc)
+
+    return GenerationResult(
+        test_cases=merged,
+        clarification_questions=result.clarification_questions,
+    )
+
+
 def enforce_lock_on_llm_result(
     previous: list[TestCase], result: GenerationResult
 ) -> GenerationResult:

@@ -1,7 +1,13 @@
 import json
 
 from app.models.material import ParsedMaterial
-from app.services.prompt_builder import build_material_content, parse_generation_result, resolve_image_numbers
+from app.models.test_case import TestCase, TestStep
+from app.services.prompt_builder import (
+    build_chat_messages,
+    build_material_content,
+    parse_generation_result,
+    resolve_image_numbers,
+)
 
 
 def test_single_image_material_has_no_group_hint_but_is_still_numbered() -> None:
@@ -177,3 +183,62 @@ def test_parse_generation_result_drops_reconfirmation_loop_questions() -> None:
     result = parse_generation_result(raw)
 
     assert [q.id for q in result.clarification_questions] == ["q5_still_open"]
+
+
+def _tc(name: str, locked: bool = False) -> TestCase:
+    return TestCase(
+        name=name,
+        steps=[TestStep(step_no=1, description="點擊登入按鈕", expected_result="導向首頁")],
+        priority="P1",
+        locked=locked,
+    )
+
+
+def _user_text_blocks(messages: list[dict]) -> list[str]:
+    return [item["text"] for item in messages[1]["content"] if item["type"] == "text"]
+
+
+def test_build_chat_messages_without_scope_sends_full_list() -> None:
+    """沒有指定範圍時，行為要跟這個功能出現之前完全一樣——這是最基本的相容性
+    保證，不能因為新增了 scoped_ids 這個參數就悄悄改變預設路徑的輸出。"""
+    cases = [_tc("用例A"), _tc("用例B", locked=True)]
+
+    messages = build_chat_messages([], cases, [], [], "hi")
+
+    blocks = _user_text_blocks(messages)
+    assert any("目前的測試用例清單（JSON）" in b and "用例A" in b and "用例B" in b for b in blocks)
+    assert any("以下用例已鎖定審核" in b and "用例B" in b for b in blocks)
+    assert not any("本次範圍" in b for b in blocks)
+
+
+def test_build_chat_messages_with_scope_only_sends_full_content_for_selected() -> None:
+    in_scope = _tc("被選中的用例")
+    out_of_scope = _tc("沒被選中的用例")
+
+    messages = build_chat_messages(
+        [], [in_scope, out_of_scope], [], [], "hi", {in_scope.id}
+    )
+
+    blocks = _user_text_blocks(messages)
+    scope_block = next(b for b in blocks if "本次範圍」的完整內容" in b)
+    assert "被選中的用例" in scope_block
+    assert "沒被選中的用例" not in scope_block
+
+    other_block = next(b for b in blocks if "只列名稱" in b)
+    assert "沒被選中的用例" in other_block
+    # 名稱清單不該帶出步驟內容，確認真的只送了名稱、沒有夾帶完整 JSON。
+    assert "點擊登入按鈕" not in other_block
+
+
+def test_build_chat_messages_with_scope_locked_list_excludes_out_of_scope() -> None:
+    """範圍外的用例即使是鎖定的，也不需要出現在「已鎖定審核」清單裡——它們本來
+    就不會被合併邏輯動到，列出來只是干擾模型的雜訊。"""
+    in_scope = _tc("範圍內未鎖定")
+    out_of_scope_locked = _tc("範圍外已鎖定", locked=True)
+
+    messages = build_chat_messages(
+        [], [in_scope, out_of_scope_locked], [], [], "hi", {in_scope.id}
+    )
+
+    blocks = _user_text_blocks(messages)
+    assert not any("已鎖定審核" in b for b in blocks)

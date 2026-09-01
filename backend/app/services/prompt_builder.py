@@ -201,15 +201,60 @@ def build_chat_messages(
     pending_questions: list[ClarificationQuestion],
     chat_history: list[ChatMessage],
     latest_message: str,
+    scoped_ids: set[str] | None = None,
 ) -> list[dict]:
+    """`scoped_ids` 有給值時，代表使用者這次特意只針對某幾筆測試用例提問（見畫面上
+    「針對已選用例提問」），目的是縮減送給模型的內容量——大部分體積來自每筆用例
+    完整的步驟描述，範圍外的用例只送名稱，不送步驟細節。範圍外的用例名稱清單還是
+    會送，讓模型至少知道「還有哪些用例存在」，不會因為完全看不到而給出重複或衝突
+    的答案；但模型沒辦法看到範圍外用例的實際內容，自然也就不可能修改到它們，呼叫端
+    （見 routers/conversations.py）事後合併回傳結果時，範圍外的用例一律原封不動保留。"""
     user_content = build_material_content(materials)
 
-    test_cases_json = json.dumps(
-        [tc.model_dump() for tc in current_test_cases], ensure_ascii=False
-    )
-    user_content.append({"type": "text", "text": f"目前的測試用例清單（JSON）：\n{test_cases_json}"})
+    if scoped_ids:
+        in_scope = [tc for tc in current_test_cases if tc.id in scoped_ids]
+        out_of_scope = [tc for tc in current_test_cases if tc.id not in scoped_ids]
+        test_cases_json = json.dumps([tc.model_dump() for tc in in_scope], ensure_ascii=False)
+        user_content.append(
+            {
+                "type": "text",
+                "text": (
+                    "使用者這次特意只針對以下測試用例提問／下指令，這是「本次範圍」的完整內容"
+                    "（JSON）：\n" + test_cases_json
+                ),
+            }
+        )
+        if out_of_scope:
+            other_names = "\n".join(f"- {tc.name}" for tc in out_of_scope)
+            user_content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        "除了本次範圍之外，這個對話裡還有以下測試用例（只列名稱，不含步驟細節，"
+                        "本次不需要處理，你看不到它們的實際內容，回傳的 test_cases 陣列裡也不需要"
+                        "包含它們——這份清單只是讓你知道還有哪些用例已經存在，避免新增跟既有用例"
+                        "重複的內容）：\n" + other_names
+                    ),
+                }
+            )
+        user_content.append(
+            {
+                "type": "text",
+                "text": (
+                    "回傳的 test_cases 陣列**只需要包含「本次範圍」裡的用例**（可以修改內容、"
+                    "也可以省略某一筆代表要刪除它），不要把範圍外的用例也放進來，也不要為了範圍外"
+                    "的內容新增用例，除非使用者這次的訊息本身明確要求新增一筆全新的用例。"
+                ),
+            }
+        )
+        locked_names = [tc.name for tc in in_scope if tc.locked]
+    else:
+        test_cases_json = json.dumps(
+            [tc.model_dump() for tc in current_test_cases], ensure_ascii=False
+        )
+        user_content.append({"type": "text", "text": f"目前的測試用例清單（JSON）：\n{test_cases_json}"})
+        locked_names = [tc.name for tc in current_test_cases if tc.locked]
 
-    locked_names = [tc.name for tc in current_test_cases if tc.locked]
     if locked_names:
         user_content.append(
             {

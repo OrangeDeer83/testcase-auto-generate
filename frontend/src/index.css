@@ -1737,6 +1737,38 @@ button.secondary:hover:not(:disabled) {
   border: 1px solid var(--color-border);
 }
 
+/* 「針對已選用例提問」鎖定範圍後，輸入框上方的提示條——讓使用者送出前還能
+   看到、也能取消這次的範圍限定。 */
+.chat-scope-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.chat-scope-chip button {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+}
+
+/* 對話紀錄裡，這則使用者訊息當初送出時鎖定的範圍——讓之後回頭看紀錄也知道
+   這句話是對著哪幾筆用例說的。 */
+.chat-bubble-scope-tag {
+  font-size: 0.72rem;
+  color: var(--color-primary);
+  font-weight: 600;
+  margin-bottom: 2px;
+  text-align: right;
+}
+
 .chat-overload-warning {
   display: flex;
   flex-direction: column;
@@ -1897,6 +1929,28 @@ button.secondary:hover:not(:disabled) {
 
 .workspace-export-button {
   box-shadow: var(--shadow-sm);
+}
+
+.workspace-scope-toggle-active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+/* 「針對已選用例提問」模式開啟時，用例表格上方的提示條，顯示已選幾筆、
+   提供「針對已選提問」的送出入口。 */
+.workspace-scope-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .workspace-cases-scroll {
@@ -2261,6 +2315,25 @@ tr.cell-highlight td {
   font-weight: 700;
   font-size: 0.76rem;
   box-shadow: 0 1px 3px rgba(20, 48, 77, 0.35);
+}
+
+/* 「針對已選用例提問」模式下每張卡片右上角的勾選框，跟左上角的編號徽章對稱，
+   不佔用卡片內部原本的排版空間。 */
+.case-scope-checkbox {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+  box-shadow: 0 1px 3px rgba(20, 48, 77, 0.35);
+}
+
+.case-card-scope-selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-soft);
 }
 
 .case-list {

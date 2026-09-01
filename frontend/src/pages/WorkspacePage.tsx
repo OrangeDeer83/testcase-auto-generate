@@ -98,6 +98,19 @@ export function WorkspacePage() {
   // 時才真的 setState，天然節流。
   const streamBufferRef = useRef('')
   const [streamingLines, setStreamingLines] = useState<StreamProgressLine[]>([])
+  // 「針對已選用例提問」：使用者先在表格裡勾選幾筆用例，再送出訊息，只有這幾筆
+  // 的完整內容會送給模型（其餘只送名稱），縮減請求內容量。scopeSelectionMode
+  // 控制表格要不要顯示勾選框；scopeSelectedIds 是目前勾選的用例 id；
+  // activeScope 是「已經確定要用來限定下一則訊息」的範圍（點了「針對已選提問」
+  // 之後才會設定），送出訊息當下才真的套用，送出後自動清空——每次的範圍限定
+  // 只對那一則訊息生效，不會不小心沿用到後續完全不相關的訊息。
+  const [scopeSelectionMode, setScopeSelectionMode] = useState(false)
+  const [scopeSelectedIds, setScopeSelectedIds] = useState<Set<string>>(new Set())
+  const [activeScope, setActiveScope] = useState<{ ids: string[]; labels: string[] } | null>(null)
+  // FloatingChat 自己管理展開/收合的 state，這裡沒辦法直接呼叫它的 setOpen；
+  // 用遞增的 token 當作「請求它打開」的訊號，FloatingChat 用 useEffect 監看
+  // 這個值的變化來強制展開。
+  const [forceOpenChatToken, setForceOpenChatToken] = useState(0)
   const [exporting, setExporting] = useState(false)
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
   const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
@@ -353,6 +366,33 @@ export function WorkspacePage() {
     setStreamingLines([])
   }
 
+  const toggleScopeSelectionMode = () => {
+    setScopeSelectionMode((prev) => !prev)
+    setScopeSelectedIds(new Set())
+  }
+
+  const toggleScopeSelected = (caseId: string) => {
+    setScopeSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(caseId)) next.delete(caseId)
+      else next.add(caseId)
+      return next
+    })
+  }
+
+  const handleAskAboutSelected = () => {
+    const ids = Array.from(scopeSelectedIds)
+    if (ids.length === 0) return
+    const labels = result.test_cases
+      .map((tc, idx) => ({ tc, idx }))
+      .filter(({ tc }) => scopeSelectedIds.has(tc.id))
+      .map(({ tc, idx }) => `第 ${idx + 1} 筆：${tc.name || '（未命名用例）'}`)
+    setActiveScope({ ids, labels })
+    setScopeSelectionMode(false)
+    setScopeSelectedIds(new Set())
+    setForceOpenChatToken((t) => t + 1)
+  }
+
   const handleGenerate = async () => {
     if (selectedMaterialIds.length === 0) {
       setError('請先勾選至少一項素材再產生測試用例')
@@ -384,6 +424,10 @@ export function WorkspacePage() {
     setBusyStartedAt(Date.now())
     resetStreamProgress()
     setError(null)
+    // 送出當下就把範圍「鎖」成一份快照，不要在整個 async 流程裡一路讀 activeScope
+    // 這個 state——避免使用者在等待回應期間又做了其他操作、不小心改到這次已經
+    // 送出去的請求所依據的範圍。
+    const scopeAtSendTime = activeScope
     // 送出失敗時（例如模型逾時）要能在對話紀錄裡插入一則錯誤訊息，所以這裡要在
     // try/catch 外面保留一份「目前為止已經確定要顯示」的紀錄；catch 拿不到 try
     // 區塊內用 const 宣告的 logWithUserMessage，用這個外層變數代替。
@@ -410,9 +454,10 @@ export function WorkspacePage() {
           content: message || `（附上：${uploaded.filename}）`,
           materialId: uploaded.id,
           imageUrl: material?.kind === 'image' ? material.image_data_url : undefined,
+          scopedCaseLabels: scopeAtSendTime?.labels,
         }
       } else {
-        attachmentEntry = { id: newId(), role: 'user', content: message }
+        attachmentEntry = { id: newId(), role: 'user', content: message, scopedCaseLabels: scopeAtSendTime?.labels }
       }
 
       const logWithUserMessage = [...chatLog, attachmentEntry]
@@ -427,6 +472,7 @@ export function WorkspacePage() {
         beforeTestCases,
         attachmentMaterialId,
         handleStreamDelta,
+        scopeAtSendTime?.ids,
       )
       setResult(res)
 
@@ -466,6 +512,9 @@ export function WorkspacePage() {
       setBusy(false)
       setBusyStartedAt(null)
       resetStreamProgress()
+      // 範圍限定只對這一則訊息生效，不管成功失敗，送出後都要清掉，避免不小心
+      // 沿用到下一則完全不相關的訊息上。
+      setActiveScope(null)
     }
   }
 
@@ -613,6 +662,19 @@ export function WorkspacePage() {
           </div>
         )}
         <div className="workspace-actions">
+          <Tooltip label="勾選幾筆用例，只針對這幾筆提問——縮減送給模型的內容量，也讓問題明確指定是哪幾筆">
+            <button
+              type="button"
+              className={`secondary${scopeSelectionMode ? ' workspace-scope-toggle-active' : ''}`}
+              onClick={toggleScopeSelectionMode}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+              </svg>
+              {scopeSelectionMode ? '取消選取' : '選取用例提問'}
+            </button>
+          </Tooltip>
           <button className="secondary" onClick={() => setShowMaterials(true)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1c2733" strokeWidth="2">
               <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -634,6 +696,17 @@ export function WorkspacePage() {
         </div>
       </div>
 
+      {scopeSelectionMode && (
+        <div className="workspace-scope-bar">
+          <span>
+            {scopeSelectedIds.size > 0 ? `已選 ${scopeSelectedIds.size} 筆用例` : '請在下方勾選要提問的用例'}
+          </span>
+          <button type="button" disabled={scopeSelectedIds.size === 0} onClick={handleAskAboutSelected}>
+            針對已選提問
+          </button>
+        </div>
+      )}
+
       <div className="workspace-cases-scroll">
         <TestCaseTable
           testCases={result.test_cases}
@@ -644,6 +717,9 @@ export function WorkspacePage() {
           focusCaseIndex={workspaceNotice?.focusIndex ?? null}
           focusToken={workspaceNotice?.focusToken}
           imageMap={imageMap}
+          scopeSelectionMode={scopeSelectionMode}
+          scopeSelectedIds={scopeSelectedIds}
+          onToggleScopeSelected={toggleScopeSelected}
         />
       </div>
 
@@ -660,6 +736,9 @@ export function WorkspacePage() {
         onChangeSelectedMaterials={handleSelectedMaterialsChange}
         draft={draftsByConversation[conversationId] ?? ''}
         onDraftChange={(draft) => setDraftForConversation(conversationId, draft)}
+        forceOpenToken={forceOpenChatToken}
+        activeScope={activeScope}
+        onClearScope={() => setActiveScope(null)}
       />
 
       {showMaterials && (
