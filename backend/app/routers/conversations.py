@@ -23,7 +23,6 @@ from app.services.test_case_lock import (
     check_result_version,
     enforce_lock_on_llm_result,
     enforce_lock_on_manual_edit,
-    merge_scoped_llm_result,
 )
 
 router = APIRouter(prefix="/api/projects/{project_id}/conversations", tags=["conversations"])
@@ -196,11 +195,6 @@ class ChatPayload(BaseModel):
     message: str
     current_test_cases: list[TestCase] = Field(default_factory=list)
     attachment_material_id: str | None = None
-    # 使用者「針對已選用例提問」時帶來的用例 id 清單——有給值時，送給模型的
-    # prompt 只會包含這幾筆用例的完整內容（其餘只送名稱），縮減請求大小；
-    # current_test_cases 仍然是完整清單，只是「要不要把完整內容送進 prompt」
-    # 這件事分開由這個欄位控制，事後合併回傳結果時還是靠完整的 current_test_cases。
-    scoped_test_case_ids: list[str] | None = None
 
 
 @router.post("/{conversation_id}/chat")
@@ -226,17 +220,13 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
     pending_questions = conversation.last_result.clarification_questions if conversation.last_result else []
     prior_history = list(conversation.llm_history)
 
-    scoped_ids = set(payload.scoped_test_case_ids) if payload.scoped_test_case_ids else None
-
     logger.info(
-        "POST /chat project=%s conversation=%s message=%r current_test_cases=%d pending_questions=%d"
-        " scoped=%s",
+        "POST /chat project=%s conversation=%s message=%r current_test_cases=%d pending_questions=%d",
         project_id, conversation_id, final_message, len(payload.current_test_cases), len(pending_questions),
-        len(scoped_ids) if scoped_ids else 0,
     )
 
     messages = build_chat_messages(
-        materials, payload.current_test_cases, pending_questions, prior_history, final_message, scoped_ids
+        materials, payload.current_test_cases, pending_questions, prior_history, final_message
     )
 
     def event_stream():
@@ -250,11 +240,6 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
             logger.error("POST /chat conversation=%s 解析失敗: %s", conversation_id, exc)
             yield _sse_event("error", {"detail": str(exc)})
             return
-
-        if scoped_ids:
-            # LLM 只看得到範圍內用例，回傳的 test_cases 也只有範圍內的部分，
-            # 要先合併回完整清單，下面的鎖定保護／存檔才能照舊流程處理。
-            result = merge_scoped_llm_result(payload.current_test_cases, scoped_ids, result)
 
         # 鎖定保護要跟 LLM 實際看到的內容用同一份「之前」基準（payload.current_test_cases，
         # 上面 build_chat_messages 也是用這份），不能用 conversation.last_result.test_cases。

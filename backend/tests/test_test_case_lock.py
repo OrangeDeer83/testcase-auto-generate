@@ -6,7 +6,6 @@ from app.services.test_case_lock import (
     check_result_version,
     enforce_lock_on_llm_result,
     enforce_lock_on_manual_edit,
-    merge_scoped_llm_result,
 )
 
 
@@ -120,70 +119,6 @@ def test_llm_result_preserves_existing_questions() -> None:
     final = enforce_lock_on_llm_result([], result)
 
     assert final.clarification_questions == [existing_question]
-
-
-def test_merge_scoped_result_leaves_out_of_scope_cases_untouched() -> None:
-    """「針對已選用例提問」時，LLM 根本沒看過範圍外用例的內容，混進比對只會製造
-    誤判——範圍外的用例不管 LLM 回傳了什麼，都要原封不動沿用舊版。"""
-    in_scope = _case(name="範圍內用例", step_desc="舊步驟")
-    out_of_scope = _case(name="範圍外用例", step_desc="不應該被動到")
-    llm_edit = in_scope.model_copy(update={"steps": [
-        TestStep(step_no=1, description="LLM 改過的步驟", expected_result="新結果")
-    ]})
-    result = GenerationResult(test_cases=[llm_edit], clarification_questions=[])
-
-    merged = merge_scoped_llm_result([in_scope, out_of_scope], {in_scope.id}, result)
-
-    assert len(merged.test_cases) == 2
-    out = next(tc for tc in merged.test_cases if tc.name == "範圍外用例")
-    assert out.steps[0].description == "不應該被動到"
-    edited = next(tc for tc in merged.test_cases if tc.name == "範圍內用例")
-    assert edited.steps[0].description == "LLM 改過的步驟"
-
-
-def test_merge_scoped_result_omitted_in_scope_case_is_deleted() -> None:
-    """範圍內的用例，LLM 回傳裡沒有對應 id，視為使用者這次要求刪除。"""
-    in_scope = _case(name="要刪除的用例")
-    result = GenerationResult(test_cases=[], clarification_questions=[])
-
-    merged = merge_scoped_llm_result([in_scope], {in_scope.id}, result)
-
-    assert merged.test_cases == []
-
-
-def test_merge_scoped_result_appends_genuinely_new_case() -> None:
-    """LLM 回傳裡出現不屬於任何既有用例的 id，代表使用者這次要求新增一筆全新的用例。"""
-    in_scope = _case(name="既有用例")
-    brand_new = TestCase(
-        name="全新用例",
-        steps=[TestStep(step_no=1, description="步驟", expected_result="結果")],
-        priority="P2",
-    )
-    result = GenerationResult(test_cases=[in_scope, brand_new], clarification_questions=[])
-
-    merged = merge_scoped_llm_result([in_scope], {in_scope.id}, result)
-
-    names = {tc.name for tc in merged.test_cases}
-    assert names == {"既有用例", "全新用例"}
-
-
-def test_merge_scoped_result_then_lock_enforcement_still_protects_locked_case() -> None:
-    """完整串起實際呼叫端（routers/conversations.py）的順序：先合併範圍內結果，
-    再跑既有的鎖定保護，確認組合起來還是能正確擋下 LLM 想改動的鎖定用例。"""
-    locked_in_scope = _case(name="鎖定用例", locked=True, step_desc="原始步驟")
-    out_of_scope = _case(name="範圍外用例")
-    llm_attempt = locked_in_scope.model_copy(update={"notes": "AI 想加的備註"})
-    result = GenerationResult(test_cases=[llm_attempt], clarification_questions=[])
-
-    merged = merge_scoped_llm_result(
-        [locked_in_scope, out_of_scope], {locked_in_scope.id}, result
-    )
-    final = enforce_lock_on_llm_result([locked_in_scope, out_of_scope], merged)
-
-    assert len(final.test_cases) == 2
-    locked_result = next(tc for tc in final.test_cases if tc.name == "鎖定用例")
-    assert locked_result.notes == ""
-    assert any("已鎖定審核" in q.question for q in final.clarification_questions)
 
 
 def test_check_result_version_matching_passes() -> None:
