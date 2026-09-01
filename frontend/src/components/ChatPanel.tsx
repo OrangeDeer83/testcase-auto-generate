@@ -7,6 +7,7 @@ import {
   findLikelyUnrelatedImageMaterials,
   isOverloaded,
 } from '../materialRisk'
+import type { StreamProgressLine } from '../streamProgress'
 import { useImageLightbox } from './ImageLightbox'
 import { Tooltip } from './Tooltip'
 import type { ChatMessage, ImageRef, TestCase, UploadedMaterial } from '../types'
@@ -20,6 +21,9 @@ interface ChatPanelProps {
    * 「思考中」要顯示的已等待秒數，不能自己在這個元件裡從 0 累加：這個元件
    * 收合時會被 unmount，重新展開後從 0 重新算就會讓等待秒數看起來被重置。 */
   busyStartedAt: number | null
+  /** 模型串流輸出時，目前已經抓到的「正在寫哪個用例／問題」清單，依序顯示在
+   * 「思考中」下面。 */
+  streamingLines: StreamProgressLine[]
   onSend: (message: string, file?: File) => void
   materials: UploadedMaterial[]
   selectedMaterialIds: string[]
@@ -41,6 +45,7 @@ export function ChatPanel({
   log,
   busy,
   busyStartedAt,
+  streamingLines,
   onSend,
   materials,
   selectedMaterialIds,
@@ -93,7 +98,7 @@ export function ChatPanel({
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ block: 'end' })
-  }, [log, busy])
+  }, [log, busy, streamingLines])
 
   useEffect(() => {
     if (!busyStartedAt) {
@@ -214,6 +219,15 @@ export function ChatPanel({
           <div className="chat-entry entry-assistant">
             <div className="chat-bubble question">
               思考中…{elapsedSeconds > 0 ? `（已等待 ${elapsedSeconds} 秒）` : ''}
+              {streamingLines.length > 0 && (
+                <ul className="chat-stream-progress">
+                  {streamingLines.map((line, idx) => (
+                    <li key={idx}>
+                      {line.kind === 'test_case' ? '📝' : '❓'} {line.text}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {elapsedSeconds >= 20 && (
                 <div className="chat-bubble-hint">
                   模型回應時間較長屬正常現象，尤其是附件含較多圖片或文件時，請耐心等候

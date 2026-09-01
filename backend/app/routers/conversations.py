@@ -1,4 +1,7 @@
+import json
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from openai import OpenAIError
 from pydantic import BaseModel, Field
 
@@ -7,7 +10,7 @@ from app.models.conversation import ChatEntry, Conversation, ConversationSummary
 from app.models.material import ImageRef
 from app.models.test_case import ChatMessage, GenerationResult, TestCase
 from app.services import conversation_store, project_store
-from app.services.llm_client import chat_completion
+from app.services.llm_client import stream_chat_completion
 from app.services.prompt_builder import (
     LLMResponseParseError,
     build_chat_messages,
@@ -108,7 +111,40 @@ def delete_conversation(project_id: str, conversation_id: str):
         raise HTTPException(status_code=404, detail="對話不存在或已被刪除")
 
 
-@router.post("/{conversation_id}/generate", response_model=GenerationResult)
+def _sse_event(event: str, data: dict) -> str:
+    """組出一個 Server-Sent Events 事件字串。SSE 格式規定每個事件用兩個換行結尾，
+    `data:` 這行內容就是一段 JSON，前端逐段收、逐段解析。"""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _stream_llm_events(endpoint: str, conversation_id: str, messages: list[dict]):
+    """呼叫模型並把每個文字片段包成 SSE `delta` 事件即時 yield 出去，讓前端能在
+    模型還在產生內容的當下就看到，不用像以前一樣整批等完成才有任何畫面回饋
+    （見 llm_client.stream_chat_completion 的說明）。用 `return` 帶出完整回應
+    文字，呼叫端（見下方兩個 endpoint）用 `yield from` 驅動這個 generator、
+    再用一般函式呼叫拿到 return 值的方式取得它：
+        raw_response = yield from _stream_llm_events(...)
+        if raw_response is None:
+            return  # 已經 yield 過 error 事件，呼叫端不用再處理
+
+    呼叫失敗（逾時、連線錯誤、模型服務回傳非 2xx）時不能像以前的一般 HTTP
+    回應那樣直接拋 HTTPException：StreamingResponse 一開始輸出，HTTP 狀態碼
+    跟標頭就已經送出去了，沒辦法在中途改成錯誤狀態碼。改成 yield 一個 SSE
+    `error` 事件、回傳 None，由前端自己判斷這個事件、顯示對應的錯誤訊息，
+    語意上等同於原本的 502 錯誤內容。"""
+    parts: list[str] = []
+    try:
+        for chunk in stream_chat_completion(messages):
+            parts.append(chunk)
+            yield _sse_event("delta", {"text": chunk})
+    except OpenAIError as exc:
+        logger.error("%s conversation=%s 呼叫模型失敗: %s", endpoint, conversation_id, exc)
+        yield _sse_event("error", {"detail": "模型服務暫時無回應，請稍後再試一次"})
+        return None
+    return "".join(parts)
+
+
+@router.post("/{conversation_id}/generate")
 def generate(project_id: str, conversation_id: str):
     _get_project_or_404(project_id)
     conversation = _get_conversation_or_404(project_id, conversation_id)
@@ -123,39 +159,32 @@ def generate(project_id: str, conversation_id: str):
     )
 
     messages = build_messages(materials)
-    raw_response = _call_llm("POST /generate", conversation_id, messages)
 
-    try:
-        result = parse_generation_result(raw_response)
-    except LLMResponseParseError as exc:
-        logger.error("POST /generate conversation=%s 解析失敗: %s", conversation_id, exc)
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    def event_stream():
+        raw_response = yield from _stream_llm_events("POST /generate", conversation_id, messages)
+        if raw_response is None:
+            return
 
-    previous_cases = conversation.last_result.test_cases if conversation.last_result else []
-    previous_version = conversation.last_result.result_version if conversation.last_result else 0
-    result = enforce_lock_on_llm_result(previous_cases, result)
-    result.result_version = previous_version + 1
-    conversation.last_result = result
-    conversation_store.save_conversation(project_id, conversation)
-    logger.info(
-        "POST /generate conversation=%s 結果: test_cases=%d questions=%d",
-        conversation_id, len(result.test_cases), len(result.clarification_questions),
-    )
-    return result
+        try:
+            result = parse_generation_result(raw_response)
+        except LLMResponseParseError as exc:
+            logger.error("POST /generate conversation=%s 解析失敗: %s", conversation_id, exc)
+            yield _sse_event("error", {"detail": str(exc)})
+            return
 
+        previous_cases = conversation.last_result.test_cases if conversation.last_result else []
+        previous_version = conversation.last_result.result_version if conversation.last_result else 0
+        result = enforce_lock_on_llm_result(previous_cases, result)
+        result.result_version = previous_version + 1
+        conversation.last_result = result
+        conversation_store.save_conversation(project_id, conversation)
+        logger.info(
+            "POST /generate conversation=%s 結果: test_cases=%d questions=%d",
+            conversation_id, len(result.test_cases), len(result.clarification_questions),
+        )
+        yield _sse_event("result", result.model_dump())
 
-def _call_llm(endpoint: str, conversation_id: str, messages: list[dict]) -> str:
-    """呼叫模型的共用包裝——`chat_completion` 本身只設了逾時／重試次數，呼叫失敗
-    （逾時、連線錯誤、模型服務回傳非 2xx）時例外會原封不動往上拋，FastAPI 預設
-    只會變成一個看不出原因的通用 500。這裡統一攔下來，記 log 並回傳使用者看得懂
-    的訊息，而不是讓前端顯示一個難以理解的錯誤。"""
-    try:
-        return chat_completion(messages)
-    except OpenAIError as exc:
-        logger.error("%s conversation=%s 呼叫模型失敗: %s", endpoint, conversation_id, exc)
-        raise HTTPException(
-            status_code=502, detail="模型服務暫時無回應，請稍後再試一次"
-        ) from exc
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 def _isimage_material(material) -> bool:
@@ -168,7 +197,7 @@ class ChatPayload(BaseModel):
     attachment_material_id: str | None = None
 
 
-@router.post("/{conversation_id}/chat", response_model=GenerationResult)
+@router.post("/{conversation_id}/chat")
 def chat(project_id: str, conversation_id: str, payload: ChatPayload):
     _get_project_or_404(project_id)
     conversation = _get_conversation_or_404(project_id, conversation_id)
@@ -190,7 +219,6 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
 
     pending_questions = conversation.last_result.clarification_questions if conversation.last_result else []
     prior_history = list(conversation.llm_history)
-    conversation.llm_history.append(ChatMessage(role="user", content=final_message))
 
     logger.info(
         "POST /chat project=%s conversation=%s message=%r current_test_cases=%d pending_questions=%d",
@@ -200,34 +228,42 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
     messages = build_chat_messages(
         materials, payload.current_test_cases, pending_questions, prior_history, final_message
     )
-    raw_response = _call_llm("POST /chat", conversation_id, messages)
 
-    try:
-        result = parse_generation_result(raw_response)
-    except LLMResponseParseError as exc:
-        logger.error("POST /chat conversation=%s 解析失敗: %s", conversation_id, exc)
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    def event_stream():
+        raw_response = yield from _stream_llm_events("POST /chat", conversation_id, messages)
+        if raw_response is None:
+            return
 
-    # 鎖定保護要跟 LLM 實際看到的內容用同一份「之前」基準（payload.current_test_cases，
-    # 上面 build_chat_messages 也是用這份），不能用 conversation.last_result.test_cases。
-    # 前端手動編輯表格是 debounce 1 秒後才真的存檔（見 WorkspacePage.tsx 的自動存檔
-    # effect），如果使用者編輯後不到 1 秒就送出聊天訊息，伺服器端這時候存的
-    # last_result 可能還是編輯前的舊內容；用它當基準比對，會把使用者剛做的合法編輯
-    # 誤判成「跟舊版不同」，連鎖定用例本身都沒被 LLM 動過，也會被這份過期基準覆蓋掉。
-    previous_cases = payload.current_test_cases
-    previous_version = conversation.last_result.result_version if conversation.last_result else 0
-    result = enforce_lock_on_llm_result(previous_cases, result)
-    result.result_version = previous_version + 1
-    conversation.last_result = result
-    conversation.llm_history.append(
-        ChatMessage(role="assistant", content=_summarize_for_history(result))
-    )
-    conversation_store.save_conversation(project_id, conversation)
-    logger.info(
-        "POST /chat conversation=%s 結果: test_cases=%d questions=%d",
-        conversation_id, len(result.test_cases), len(result.clarification_questions),
-    )
-    return result
+        try:
+            result = parse_generation_result(raw_response)
+        except LLMResponseParseError as exc:
+            logger.error("POST /chat conversation=%s 解析失敗: %s", conversation_id, exc)
+            yield _sse_event("error", {"detail": str(exc)})
+            return
+
+        # 鎖定保護要跟 LLM 實際看到的內容用同一份「之前」基準（payload.current_test_cases，
+        # 上面 build_chat_messages 也是用這份），不能用 conversation.last_result.test_cases。
+        # 前端手動編輯表格是 debounce 1 秒後才真的存檔（見 WorkspacePage.tsx 的自動存檔
+        # effect），如果使用者編輯後不到 1 秒就送出聊天訊息，伺服器端這時候存的
+        # last_result 可能還是編輯前的舊內容；用它當基準比對，會把使用者剛做的合法編輯
+        # 誤判成「跟舊版不同」，連鎖定用例本身都沒被 LLM 動過，也會被這份過期基準覆蓋掉。
+        previous_cases = payload.current_test_cases
+        previous_version = conversation.last_result.result_version if conversation.last_result else 0
+        result = enforce_lock_on_llm_result(previous_cases, result)
+        result.result_version = previous_version + 1
+        conversation.last_result = result
+        conversation.llm_history.append(ChatMessage(role="user", content=final_message))
+        conversation.llm_history.append(
+            ChatMessage(role="assistant", content=_summarize_for_history(result))
+        )
+        conversation_store.save_conversation(project_id, conversation)
+        logger.info(
+            "POST /chat conversation=%s 結果: test_cases=%d questions=%d",
+            conversation_id, len(result.test_cases), len(result.clarification_questions),
+        )
+        yield _sse_event("result", result.model_dump())
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 def _summarize_for_history(result: GenerationResult) -> str:

@@ -37,6 +37,73 @@ export function isConflictError(err: unknown): boolean {
   return err instanceof Error && (err as ApiError).status === 409
 }
 
+interface SseEvent {
+  event: string
+  data: any
+}
+
+/** 逐段讀取 Server-Sent Events 回應，讀到一個完整事件（兩個換行結尾）就 yield
+ * 出來；瀏覽器收到的 chunk 邊界不一定剛好切在事件邊界上，所以要自己維護一個
+ * buffer，累積到看見完整事件才切出來解析，剩下的留著跟下一個 chunk 接續。 */
+async function* readSseEvents(response: Response): AsyncGenerator<SseEvent> {
+  if (!response.body) return
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let separatorIndex: number
+    while ((separatorIndex = buffer.indexOf('\n\n')) !== -1) {
+      const rawEvent = buffer.slice(0, separatorIndex)
+      buffer = buffer.slice(separatorIndex + 2)
+      yield parseSseEvent(rawEvent)
+    }
+  }
+}
+
+function parseSseEvent(raw: string): SseEvent {
+  let event = 'message'
+  const dataLines: string[] = []
+  for (const line of raw.split('\n')) {
+    if (line.startsWith('event:')) event = line.slice(6).trim()
+    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+  }
+  return { event, data: dataLines.length ? JSON.parse(dataLines.join('\n')) : null }
+}
+
+/** /generate、/chat 共用的串流呼叫邏輯：後端用 SSE 陸續送出 `delta`（模型正在
+ * 產生的文字片段）跟最後一個 `result`（完整處理過、可以直接當結果用的
+ * GenerationResult），失敗時送 `error`。`onDelta` 讓呼叫端可以即時把片段顯示
+ * 給使用者看（見 materialRisk 的姊妹檔 streamProgress.ts），不需要串流的呼叫端
+ * 可以不傳。 */
+async function streamGenerationResult(
+  url: string,
+  init: RequestInit,
+  onDelta?: (text: string) => void,
+): Promise<GenerationResult> {
+  const response = await fetch(url, init)
+  if (!response.ok) {
+    return handleResponse<GenerationResult>(response)
+  }
+  let result: GenerationResult | null = null
+  for await (const evt of readSseEvents(response)) {
+    if (evt.event === 'delta') {
+      onDelta?.(evt.data.text)
+    } else if (evt.event === 'result') {
+      result = evt.data
+    } else if (evt.event === 'error') {
+      const error: ApiError = new Error(evt.data?.detail ?? '請求失敗')
+      throw error
+    }
+  }
+  if (!result) {
+    throw new Error('模型回應不完整，請重新整理後再試一次')
+  }
+  return result
+}
+
 // ---- snake_case (後端) <-> camelCase（前端）轉換 ----
 
 function mapProject(raw: any): Project {
@@ -291,12 +358,16 @@ export async function deleteConversation(projectId: string, conversationId: stri
   await handleResponse(response)
 }
 
-export async function generate(projectId: string, conversationId: string): Promise<GenerationResult> {
-  const response = await fetch(
+export async function generate(
+  projectId: string,
+  conversationId: string,
+  onDelta?: (text: string) => void,
+): Promise<GenerationResult> {
+  return streamGenerationResult(
     `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/generate`,
     { method: 'POST' },
+    onDelta,
   )
-  return handleResponse(response)
 }
 
 export async function sendChatMessage(
@@ -305,8 +376,9 @@ export async function sendChatMessage(
   message: string,
   currentTestCases: TestCase[],
   attachmentMaterialId?: string,
+  onDelta?: (text: string) => void,
 ): Promise<GenerationResult> {
-  const response = await fetch(
+  return streamGenerationResult(
     `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/chat`,
     {
       method: 'POST',
@@ -317,8 +389,8 @@ export async function sendChatMessage(
         attachment_material_id: attachmentMaterialId ?? null,
       }),
     },
+    onDelta,
   )
-  return handleResponse(response)
 }
 
 export async function updateTestCases(

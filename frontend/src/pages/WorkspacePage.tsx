@@ -26,6 +26,7 @@ import { Tooltip } from '../components/Tooltip'
 import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
 import { newId } from '../id'
 import { countMaterialUsage } from '../materialUsage'
+import { extractStreamProgress, type StreamProgressLine } from '../streamProgress'
 import { useDuplicateTabWarning } from '../useDuplicateTabWarning'
 import type { ShellContext } from './ProjectLayout'
 import type { ChatMessage, GenerationResult, ImageRef, UploadedMaterial } from '../types'
@@ -89,6 +90,14 @@ export function WorkspacePage() {
   // ChatPanel 只要用「現在時間 - 這個時間戳」重新算一次即可，不管中途有沒有
   // 被關閉過，算出來的都還是真正經過的秒數。
   const [busyStartedAt, setBusyStartedAt] = useState<number | null>(null)
+  // 模型串流輸出時，目前已經抓到的「正在寫哪個用例／問題」清單——放在這一層
+  // 而不是 ChatPanel 自己的 state，理由跟 busyStartedAt 一樣：ChatPanel 收合
+  // 時會被 unmount，重新展開不該讓已經看過的進度憑空消失。累積的原始文字
+  // 本身放在 ref（streamBufferRef）而不是 state，因為每個 SSE 片段都會觸發
+  // 一次，全部塞進 state 會造成過於頻繁的重新渲染；只有「抓出來的清單有變化」
+  // 時才真的 setState，天然節流。
+  const streamBufferRef = useRef('')
+  const [streamingLines, setStreamingLines] = useState<StreamProgressLine[]>([])
   const [exporting, setExporting] = useState(false)
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
   const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
@@ -331,6 +340,19 @@ export function WorkspacePage() {
     }
   }
 
+  // 模型串流輸出的每個片段都會呼叫這裡一次；只有「抓出來的清單長度變多」才
+  // setState 觸發重新渲染，避免每個字元都重繪一次畫面。
+  const handleStreamDelta = (text: string) => {
+    streamBufferRef.current += text
+    const lines = extractStreamProgress(streamBufferRef.current)
+    setStreamingLines((prev) => (lines.length > prev.length ? lines : prev))
+  }
+
+  const resetStreamProgress = () => {
+    streamBufferRef.current = ''
+    setStreamingLines([])
+  }
+
   const handleGenerate = async () => {
     if (selectedMaterialIds.length === 0) {
       setError('請先勾選至少一項素材再產生測試用例')
@@ -338,9 +360,10 @@ export function WorkspacePage() {
     }
     setBusy(true)
     setBusyStartedAt(Date.now())
+    resetStreamProgress()
     setError(null)
     try {
-      const res = await generate(projectId, conversationId)
+      const res = await generate(projectId, conversationId, handleStreamDelta)
       setResult(res)
       const log = describeResult(res)
       setChatLog(log)
@@ -352,12 +375,14 @@ export function WorkspacePage() {
     } finally {
       setBusy(false)
       setBusyStartedAt(null)
+      resetStreamProgress()
     }
   }
 
   const handleSendMessage = async (message: string, file?: File) => {
     setBusy(true)
     setBusyStartedAt(Date.now())
+    resetStreamProgress()
     setError(null)
     // 送出失敗時（例如模型逾時）要能在對話紀錄裡插入一則錯誤訊息，所以這裡要在
     // try/catch 外面保留一份「目前為止已經確定要顯示」的紀錄；catch 拿不到 try
@@ -401,6 +426,7 @@ export function WorkspacePage() {
         message,
         beforeTestCases,
         attachmentMaterialId,
+        handleStreamDelta,
       )
       setResult(res)
 
@@ -439,6 +465,7 @@ export function WorkspacePage() {
     } finally {
       setBusy(false)
       setBusyStartedAt(null)
+      resetStreamProgress()
     }
   }
 
@@ -624,6 +651,7 @@ export function WorkspacePage() {
         log={chatLog}
         busy={busy}
         busyStartedAt={busyStartedAt}
+        streamingLines={streamingLines}
         onSend={handleSendMessage}
         materials={materials}
         selectedMaterialIds={selectedMaterialIds}

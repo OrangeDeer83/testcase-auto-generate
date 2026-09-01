@@ -2,6 +2,22 @@
 
 > 記錄每次修 bug／改善 UX 時「為什麼壞掉、怎麼修好的、背後用到什麼可以遷移到其他情境的觀念」，主要是寫給使用者看的學習筆記，也順便讓之後回頭查、或下一個接手的 Claude 不用重新翻一次 diff 才搞懂修法。跟 [PROGRESS.md](PROGRESS.md) 的差異：PROGRESS.md 是變更歷史總覽（做了什麼），這份專注在單一問題的根因、修法、與原理本身。維護方式見 `.claude/skills/fix-notes/SKILL.md`。
 
+## 2026-09-01 呼叫模型時改成串流輸出，即時顯示正在產生的用例／問題
+
+**問題**：使用者問「模型操作的過程中會有回覆嗎？我可以看到這些回覆讓我知道他正在運作嗎？」——原本的做法是後端整批等模型把完整回應都產生完才一次拿到結果，前端在這幾分鐘的等待期間完全看不到任何內容，只有一個單純的「思考中…（已等待 N 秒）」計時器，感覺不到模型「正在運作」，尤其在前一則 FIX_NOTES 記錄的逾時預算調高到 280 秒之後，這段空等的時間更長了。使用者要求改成像 Claude 聊天介面那樣，即時把模型正在做的事照實描述出來。
+
+**修法**：分後端、前端兩層：
+
+1. **後端串流**：`llm_client.py` 把原本一次性呼叫的 `chat_completion` 換成 `stream_chat_completion`（`stream=True`），逐段 `yield` 模型吐出來的文字片段，不再整批等完。`/generate`、`/chat` 這兩個 endpoint 改成回傳 `StreamingResponse`，用 Server-Sent Events（SSE）格式把每個片段包成 `delta` 事件即時轉送給前端；模型完整回應收完之後，還是照原本的邏輯做 JSON 解析、鎖定保護、存檔，最後包成一個 `result` 事件送出（前端看到這個事件才算真正拿到最終結果，跟串流之前的行為完全一致）；呼叫失敗（逾時、連線錯誤）時包成 `error` 事件——這裡有個限制：串流一旦開始輸出，HTTP 狀態碼跟標頭就已經送出去了，沒辦法再像以前一樣用 `HTTPException` 中途改變回應狀態碼，只能靠這個 `error` 事件讓前端自己判斷並顯示對應訊息。
+2. **前端即時顯示**：新增 `streamProgress.ts` 的 `extractStreamProgress`，用正規表示式從「目前已經收到、還沒收完的原始 JSON 文字」裡抓出**已經確定寫完的完整欄位值**（`"name": "..."` 的測試用例名稱、`"question": "..."` 的澄清問題），轉成「📝 用例名稱」「❓ 問題內容」這種一句話的進度描述，依序顯示在「思考中」下面；只抓「已經有結尾引號、確定寫完」的值，寫到一半的欄位不會被誤判抓到半截內容。這個抓取邏輯刻意保持單純：不去嘗試解析或修復還沒收完的 JSON 結構本身（那是收完整份回應後 `parse_generation_result` 才做的事），純粹是「照實轉述模型目前已經產生的內容」，抓不到就不顯示，不編造、不猜測，符合這個專案「LLM 不可以亂猜」延伸到前端顯示邏輯的一貫原則。
+3. 進度清單的狀態（`streamingLines`）比照同一天稍早「草稿」「已等待秒數」兩個 bug 學到的教訓，放在不會被浮動視窗收合影響的 `WorkspacePage` 那一層，不是 `ChatPanel` 自己的 state。
+
+**背後的通用觀念**：（1）**「串流」不是只有聊天機器人那種自然語言逐字輸出才能用**——這個專案的模型輸出其實是結構化 JSON，不是一段自然語言，但一樣可以用串流傳輸原始位元組／文字，差別只在於「怎麼把還沒收完的原始內容，轉成使用者看得懂的東西」這一步要自己想辦法，不能直接把原始 JSON 片段秀給使用者看（會看到一堆破碎的大括號、引號）。用「只抓已經確定寫完的完整欄位值」這種保守策略，換取「不用真的解析半成品 JSON」的簡單實作，是很多「即時預覽還沒傳完的結構化資料」情境都能用的技巧。（2）**串流回應（`StreamingResponse`／SSE）跟一般的請求-回應模式，在「怎麼回報錯誤」這件事上有根本性的差異**——一般回應可以在處理失敗時直接改變 HTTP 狀態碼（例如回 502），但串流一旦開始輸出，狀態碼與標頭已經送出去、無法再改，只能透過應用層自訂的「錯誤事件」讓前端自己判斷。這是任何要把現有的「整批回應」端點改成串流時都會踩到的固定陷阱，錯誤處理的邏輯必須整個從「拋例外讓框架處理」改成「用資料格式本身表達錯誤」。
+
+**檔案**：`backend/app/services/llm_client.py`（`chat_completion` 換成串流版 `stream_chat_completion`）、`backend/app/routers/conversations.py`（`/generate`、`/chat` 改成 `StreamingResponse` + SSE，新增 `_sse_event`／`_stream_llm_events` 共用邏輯）、`backend/tests/test_conversations_router.py`（改測 `_stream_llm_events` 的串流輸出與錯誤轉換行為）；新增 `frontend/src/streamProgress.ts`（`extractStreamProgress` 純函式）與對應測試 `streamProgress.test.ts`；`frontend/src/api.ts`（新增 SSE 讀取邏輯 `readSseEvents`／`streamGenerationResult`，`generate`／`sendChatMessage` 新增 `onDelta` callback）、`frontend/src/pages/WorkspacePage.tsx`（新增 `streamingLines` state 與 `handleStreamDelta`）、`frontend/src/components/FloatingChat.tsx`／`ChatPanel.tsx`（往下傳遞並顯示 `streamingLines`）、`frontend/src/index.css`（新增 `.chat-stream-progress` 樣式）。
+
+**驗證方式**：`.venv/Scripts/python.exe -m pytest`（後端 57 個測試全過，含重寫的串流／錯誤事件測試）、`npx tsc --noEmit`、`npx vitest run`（前端 38 個測試全過，含新增的 `extractStreamProgress` 6 個測試，涵蓋「欄位還沒寫完不會被誤判抓到」這個關鍵情境）。瀏覽器實測（dev 環境 18002/5175）：先直接用 Python 對 dev 後端的 `/chat` endpoint 發真實請求，讀取前幾個原始 SSE 位元組，確認 `Content-Type: text/event-stream` 且逐字收到 `event: delta` 事件（真的是一個字一個字送過來，不是整包才送）；再到瀏覽器裡實際送出一則訊息，20 秒內親眼看到「思考中」下面依序冒出 5 個「📝 用例名稱」的進度項目，跟這個對話當下實際的 5 筆用例完全對應，最後也正確收到 `result` 事件、跟串流之前的行為一樣完成整個對話流程（本次變動摘要、測試用例更新都正常）。測試過程中在 dev 環境留下的測試訊息已用 API 移除，不影響使用者原本的對話紀錄。
+
 ## 2026-09-01 頻繁遇到「模型服務暫時無回應」，調高單次逾時預算、拿掉自動重試
 
 **問題**：使用者反映最近多次呼叫模型都遇到「⚠️ 模型服務暫時無回應，請稍後再試一次」。查正式環境的 `backend/logs/app.log`，2026-09-01 當天的呼叫記錄呈現一個清楚的模式：

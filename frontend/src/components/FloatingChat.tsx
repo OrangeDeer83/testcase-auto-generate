@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChatPanel } from './ChatPanel'
 import { Tooltip } from './Tooltip'
+import type { StreamProgressLine } from '../streamProgress'
 import type { ChatMessage, ImageRef, TestCase, UploadedMaterial } from '../types'
 
 interface FloatingChatProps {
@@ -10,6 +11,9 @@ interface FloatingChatProps {
    * 秒數，不能只靠 ChatPanel 自己內部從 0 累加，否則視窗關閉重開後會歸零。
    * busy 為 false 時是 null。 */
   busyStartedAt: number | null
+  /** 模型串流輸出時，目前已經抓到的「正在寫哪個用例／問題」清單，依序顯示在
+   * 「思考中」下面，讓使用者能看到模型正在做什麼，不只是一個乾等的計時器。 */
+  streamingLines: StreamProgressLine[]
   onSend: (message: string, file?: File) => void
   materials: UploadedMaterial[]
   selectedMaterialIds: string[]
@@ -32,6 +36,7 @@ export function FloatingChat({
   log,
   busy,
   busyStartedAt,
+  streamingLines,
   onSend,
   materials,
   selectedMaterialIds,
@@ -129,6 +134,7 @@ export function FloatingChat({
           log={log}
           busy={busy}
           busyStartedAt={busyStartedAt}
+          streamingLines={streamingLines}
           onSend={onSend}
           materials={materials}
           selectedMaterialIds={selectedMaterialIds}
