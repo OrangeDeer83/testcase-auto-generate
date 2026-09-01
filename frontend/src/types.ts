@@ -29,10 +29,20 @@ export interface ClarificationQuestion {
   context: string
 }
 
+/** 聊天式編輯時，AI 提出但使用者還沒點「套用」的一筆用例變更——`id` 對應
+ * 目標用例的 id（action 為 'add' 時是這筆新用例被指派的 id）；action 為
+ * 'delete' 時 `data` 是 null，其餘動作 `data` 是 AI 建議的完整用例內容。 */
+export interface PendingChange {
+  id: string
+  action: 'add' | 'update' | 'delete'
+  data: TestCase | null
+}
+
 export interface GenerationResult {
   test_cases: TestCase[]
   clarification_questions: ClarificationQuestion[]
   result_version: number
+  pending_changes: PendingChange[]
 }
 
 export interface ChatMessage {

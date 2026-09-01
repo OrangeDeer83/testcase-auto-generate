@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ConfirmDialog } from './ConfirmDialog'
 import { useImageLightbox } from './ImageLightbox'
 import { Tooltip } from './Tooltip'
+import { describeCaseFieldChanges, getProposedFieldValues } from '../diffTestCases'
 import { newId } from '../id'
-import type { ImageRef, TestCase, TestStep } from '../types'
+import type { ImageRef, PendingChange, TestCase, TestStep } from '../types'
 
 interface DragInfo {
   caseIndex: number
@@ -23,6 +24,11 @@ interface TestCaseTableProps {
   focusToken?: number
   /** 「圖N」編號 → 實際素材縮圖網址的反查表，用來畫每筆用例的「依據圖片」。 */
   imageMap?: Map<number, ImageRef>
+  /** 聊天式編輯提出、使用者還沒確認套用的建議變更——依 id 對應到某筆既有用例
+   * （action 為 'update'/'delete'）或代表一筆全新的建議用例（action 為 'add'）。 */
+  pendingChanges?: PendingChange[]
+  onApplyPendingChange?: (changeId: string) => void
+  onDismissPendingChange?: (changeId: string) => void
 }
 
 interface AutoTextAreaProps {
@@ -88,11 +94,22 @@ export function TestCaseTable({
   focusCaseIndex,
   focusToken,
   imageMap,
+  pendingChanges,
+  onApplyPendingChange,
+  onDismissPendingChange,
 }: TestCaseTableProps) {
   const isHighlighted = (key: string) => highlightedKeys?.has(key) ?? false
   const previousValueOf = (key: string) => previousValues?.get(key)
   const focusClears = (keys: string[]) => () => onFieldFocus?.(keys)
   const { open: openPreview, lightbox } = useImageLightbox()
+
+  const testCaseIds = new Set(testCases.map((tc) => tc.id))
+  const pendingById = new Map((pendingChanges ?? []).map((change) => [change.id, change]))
+  // action 為 'add' 的建議，目標用例本來就不在 testCases 裡（還沒套用），
+  // 要另外用一張「建議新增」的卡片呈現，不能套進既有列的迴圈裡。
+  const addProposals = (pendingChanges ?? []).filter(
+    (change) => change.action === 'add' && !testCaseIds.has(change.id),
+  )
 
   const [dragInfo, setDragInfo] = useState<DragInfo | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
@@ -124,6 +141,23 @@ export function TestCaseTable({
       return changed ? next : prev
     })
   }, [highlightedKeys])
+
+  // 有 AI 建議變更的用例自動展開，讓使用者不用自己點開就能看到建議內容。
+  useEffect(() => {
+    if (!pendingChanges || pendingChanges.length === 0) return
+    setExpandedIndices((prev) => {
+      const next = new Set(prev)
+      let changed = false
+      testCases.forEach((tc, index) => {
+        if (pendingById.has(tc.id) && !next.has(index)) {
+          next.add(index)
+          changed = true
+        }
+      })
+      return changed ? next : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingChanges])
 
   // 匯出時如果發現有未鎖定的用例會擋下並傳入 focusCaseIndex，這裡負責把它展開、捲動過去，
   // 讓使用者不用自己在一長串用例裡找是哪一筆。
@@ -224,10 +258,20 @@ export function TestCaseTable({
         const locked = testCase.locked
         const isCaseDragging = caseDragIndex === caseIndex
         const isCaseDragOver = caseDragOverIndex === caseIndex && caseDragIndex !== caseIndex
+        const pendingChange = pendingById.get(testCase.id)
+        const proposedValues =
+          pendingChange?.action === 'update' && pendingChange.data
+            ? getProposedFieldValues(testCase, pendingChange.data)
+            : undefined
+        const proposedSummary =
+          pendingChange?.action === 'update' && pendingChange.data
+            ? describeCaseFieldChanges(testCase, pendingChange.data)
+            : undefined
+        const proposedValueOf = (key: string) => proposedValues?.get(key)
         return (
         <div
           id={`field-case:${caseIndex}`}
-          className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}${expanded ? '' : ' case-card-collapsed'}${locked ? ' case-card-locked' : ''}${isCaseDragging ? ' case-dragging' : ''}${isCaseDragOver ? ' case-drag-over' : ''}`}
+          className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}${expanded ? '' : ' case-card-collapsed'}${locked ? ' case-card-locked' : ''}${isCaseDragging ? ' case-dragging' : ''}${isCaseDragOver ? ' case-drag-over' : ''}${pendingChange ? ' case-card-has-proposal' : ''}`}
           key={caseIndex}
           onDragOver={(e) => {
             if (caseDragIndex == null) return
@@ -347,6 +391,41 @@ export function TestCaseTable({
             </Tooltip>
           </div>
 
+          {pendingChange && (
+            <div className={`case-proposal-banner${pendingChange.action === 'delete' ? ' case-proposal-banner-delete' : ''}`}>
+              {pendingChange.action === 'delete' ? (
+                <span>AI 建議刪除這筆用例</span>
+              ) : (
+                <span>
+                  AI 建議變更此用例
+                  {proposedSummary && proposedSummary.length > 0 && `：${proposedSummary.join('、')}`}
+                </span>
+              )}
+              <div className="case-proposal-actions">
+                <button
+                  type="button"
+                  className="case-proposal-apply"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onApplyPendingChange?.(pendingChange.id)
+                  }}
+                >
+                  {pendingChange.action === 'delete' ? '確認刪除' : '套用'}
+                </button>
+                <button
+                  type="button"
+                  className="case-proposal-dismiss"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDismissPendingChange?.(pendingChange.id)
+                  }}
+                >
+                  {pendingChange.action === 'delete' ? '保留' : '忽略'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {expanded && (
           <>
           {testCase.based_on_images.length > 0 && (
@@ -386,6 +465,9 @@ export function TestCaseTable({
                     原本：{previousValueOf(`case:${caseIndex}:module`) || '（空）'}
                   </div>
                 )}
+              {proposedValueOf('module') !== undefined && (
+                <div className="proposed-value">AI 建議：{proposedValueOf('module') || '（空）'}</div>
+              )}
             </label>
             <label>
               優先級
@@ -404,6 +486,9 @@ export function TestCaseTable({
                     原本：{previousValueOf(`case:${caseIndex}:priority`) || '（空）'}
                   </div>
                 )}
+              {proposedValueOf('priority') !== undefined && (
+                <div className="proposed-value">AI 建議：{proposedValueOf('priority') || '（空）'}</div>
+              )}
             </label>
             <label style={{ flex: 1 }}>
               前置條件
@@ -421,6 +506,9 @@ export function TestCaseTable({
                     原本：{previousValueOf(`case:${caseIndex}:preconditions`) || '（空）'}
                   </div>
                 )}
+              {proposedValueOf('preconditions') !== undefined && (
+                <div className="proposed-value">AI 建議：{proposedValueOf('preconditions') || '（空）'}</div>
+              )}
             </label>
           </div>
 
@@ -439,6 +527,8 @@ export function TestCaseTable({
                 const rowHighlighted = isHighlighted(stepKey)
                 const prevDescription = previousValueOf(`${stepKey}:description`)
                 const prevExpected = previousValueOf(`${stepKey}:expected_result`)
+                const proposedDescription = proposedValueOf(`step:${stepIndex}:description`)
+                const proposedExpected = proposedValueOf(`step:${stepIndex}:expected_result`)
                 const isDragging =
                   dragInfo?.caseIndex === caseIndex && dragInfo.stepIndex === stepIndex
                 const isDragOver =
@@ -519,6 +609,9 @@ export function TestCaseTable({
                       {isHighlighted(`${stepKey}:description`) && prevDescription !== undefined && (
                         <div className="previous-value">原本：{prevDescription || '（空）'}</div>
                       )}
+                      {proposedDescription !== undefined && (
+                        <div className="proposed-value">AI 建議：{proposedDescription || '（空）'}</div>
+                      )}
                     </td>
                     <td>
                       <AutoTextArea
@@ -541,6 +634,9 @@ export function TestCaseTable({
                       />
                       {isHighlighted(`${stepKey}:expected_result`) && prevExpected !== undefined && (
                         <div className="previous-value">原本：{prevExpected || '（空）'}</div>
+                      )}
+                      {proposedExpected !== undefined && (
+                        <div className="proposed-value">AI 建議：{proposedExpected || '（空）'}</div>
                       )}
                     </td>
                     <td>
@@ -579,6 +675,9 @@ export function TestCaseTable({
                   原本：{previousValueOf(`case:${caseIndex}:notes`) || '（空）'}
                 </div>
               )}
+            {proposedValueOf('notes') !== undefined && (
+              <div className="proposed-value">AI 建議：{proposedValueOf('notes') || '（空）'}</div>
+            )}
           </label>
 
           <div className="case-footer">
@@ -594,6 +693,50 @@ export function TestCaseTable({
           </>
           )}
         </div>
+        )
+      })}
+
+      {addProposals.map((change) => {
+        const proposed = change.data
+        if (!proposed) return null
+        return (
+          <div key={change.id} className="case-card case-card-proposal">
+            <div className="case-proposal-banner">
+              <span>AI 建議新增這筆用例</span>
+              <div className="case-proposal-actions">
+                <button
+                  type="button"
+                  className="case-proposal-apply"
+                  onClick={() => onApplyPendingChange?.(change.id)}
+                >
+                  新增此用例
+                </button>
+                <button
+                  type="button"
+                  className="case-proposal-dismiss"
+                  onClick={() => onDismissPendingChange?.(change.id)}
+                >
+                  忽略建議
+                </button>
+              </div>
+            </div>
+            <div className="case-proposal-preview">
+              <div className="case-proposal-preview-name">{proposed.name || '（未命名用例）'}</div>
+              <div className="field-row">
+                <span>模塊：{proposed.module || '（空）'}</span>
+                <span>優先級：{proposed.priority || '（空）'}</span>
+                <span>前置條件：{proposed.preconditions || '（空）'}</span>
+              </div>
+              <ol>
+                {proposed.steps.map((step, idx) => (
+                  <li key={idx}>
+                    {step.description} → {step.expected_result}
+                  </li>
+                ))}
+              </ol>
+              {proposed.notes && <div>備註：{proposed.notes}</div>}
+            </div>
+          </div>
         )
       })}
 

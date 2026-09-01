@@ -1,6 +1,6 @@
 import uuid
 
-from app.models.test_case import ClarificationQuestion, GenerationResult, TestCase
+from app.models.test_case import ClarificationQuestion, GenerationResult, PendingChange, TestCase
 
 _LOCKED_EDIT_NOTICE = (
     "測試用例「{name}」已鎖定審核，AI 嘗試調整但未套用；如需修改請先解鎖再編輯。"
@@ -162,3 +162,90 @@ def merge_scoped_llm_result(
         test_cases=merged,
         clarification_questions=result.clarification_questions,
     )
+
+
+def compute_pending_changes(
+    previous: list[TestCase], proposed: list[TestCase]
+) -> list[PendingChange]:
+    """把 AI 這次提出的完整用例清單（`proposed`，已經過 enforce_lock_on_llm_result
+    保護，鎖定用例一定跟 `previous` 裡的內容一模一樣）跟目前已確認套用的清單
+    （`previous`）比對，算出「有變動的部分」，包成一筆一筆的 PendingChange，
+    交給使用者個別確認要不要套用——聊天回覆不再像以前一樣直接覆蓋 test_cases。
+    用 id 比對（不是名稱），道理跟 merge_scoped_llm_result／
+    enforce_lock_on_llm_result 一樣：名稱可能被同一次回覆一起改掉，用 id 才不會
+    把「改名」誤判成「刪除一筆、新增一筆」。"""
+    previous_by_id = {tc.id: tc for tc in previous}
+    proposed_ids = {tc.id for tc in proposed}
+
+    changes: list[PendingChange] = []
+    for tc in proposed:
+        old = previous_by_id.get(tc.id)
+        if old is None:
+            changes.append(PendingChange(id=tc.id, action="add", data=tc))
+        elif old != tc:
+            changes.append(PendingChange(id=tc.id, action="update", data=tc))
+
+    for tc in previous:
+        if tc.id not in proposed_ids:
+            changes.append(PendingChange(id=tc.id, action="delete", data=None))
+
+    return changes
+
+
+def merge_pending_changes(
+    existing: list[PendingChange], new: list[PendingChange]
+) -> list[PendingChange]:
+    """允許同時累積好幾筆不同用例的待確認建議（使用者可以先不理上一輪的建議、
+    繼續往下聊），但同一筆用例只保留「最新一輪」的建議——如果使用者還沒套用
+    第一次的建議，AI 這次又針對同一筆用例提出新的建議，用新的蓋掉舊的，不是
+    疊加成兩筆互相衝突的待確認項目。"""
+    by_id = {change.id: change for change in existing}
+    for change in new:
+        by_id[change.id] = change
+    return list(by_id.values())
+
+
+class PendingChangeNotFoundError(Exception):
+    pass
+
+
+class LockedCaseConflictError(Exception):
+    """套用當下才發現目標用例已經被鎖定（例如建議提出之後、使用者套用之前，
+    另一個分頁把這筆用例鎖定了）——鎖定保護必須在套用當下也守住一次，不能只
+    信任建議產生當時的狀態。"""
+
+
+def apply_pending_change(
+    test_cases: list[TestCase], pending_changes: list[PendingChange], change_id: str
+) -> tuple[list[TestCase], list[PendingChange]]:
+    """把某一筆待確認建議實際套用進正式的用例清單，回傳（套用後的用例清單、
+    移除這筆之後剩下的待確認清單）。呼叫端負責存檔跟版本號遞增。"""
+    change = next((c for c in pending_changes if c.id == change_id), None)
+    if change is None:
+        raise PendingChangeNotFoundError(change_id)
+    remaining = [c for c in pending_changes if c.id != change_id]
+
+    if change.action == "add":
+        assert change.data is not None
+        return [*test_cases, change.data], remaining
+
+    target = next((tc for tc in test_cases if tc.id == change_id), None)
+    if target is not None and target.locked:
+        raise LockedCaseConflictError(change_id)
+
+    if change.action == "delete":
+        return [tc for tc in test_cases if tc.id != change_id], remaining
+
+    assert change.data is not None
+    updated = [change.data if tc.id == change_id else tc for tc in test_cases]
+    return updated, remaining
+
+
+def dismiss_pending_change(
+    pending_changes: list[PendingChange], change_id: str
+) -> list[PendingChange]:
+    """忽略某一筆待確認建議，不套用、直接從清單移除，正式的用例內容維持原樣。"""
+    remaining = [c for c in pending_changes if c.id != change_id]
+    if len(remaining) == len(pending_changes):
+        raise PendingChangeNotFoundError(change_id)
+    return remaining

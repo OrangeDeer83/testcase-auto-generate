@@ -1,11 +1,17 @@
 import pytest
 
-from app.models.test_case import ClarificationQuestion, GenerationResult, TestCase, TestStep
+from app.models.test_case import ClarificationQuestion, GenerationResult, PendingChange, TestCase, TestStep
 from app.services.test_case_lock import (
+    LockedCaseConflictError,
+    PendingChangeNotFoundError,
     VersionConflictError,
+    apply_pending_change,
     check_result_version,
+    compute_pending_changes,
+    dismiss_pending_change,
     enforce_lock_on_llm_result,
     enforce_lock_on_manual_edit,
+    merge_pending_changes,
     merge_scoped_llm_result,
     resolve_related_test_case_ids,
 )
@@ -217,3 +223,123 @@ def test_merge_scoped_result_then_lock_enforcement_still_protects_locked_case() 
     final_by_name = {tc.name: tc for tc in final.test_cases}
     assert final_by_name["鎖定用例"].notes == ""
     assert any("已鎖定審核" in q.question for q in final.clarification_questions)
+
+
+def test_compute_pending_changes_detects_added_updated_and_deleted_cases() -> None:
+    unchanged = _case(name="沒被動到")
+    to_update = _case(name="要被改的用例")
+    to_delete = _case(name="要被刪的用例")
+    previous = [unchanged, to_update, to_delete]
+
+    updated = to_update.model_copy(update={"notes": "AI 改的備註"})
+    new_case = TestCase(
+        name="全新用例", steps=[TestStep(step_no=1, description="步驟", expected_result="結果")], priority="P2"
+    )
+    proposed = [unchanged, updated, new_case]
+
+    changes = compute_pending_changes(previous, proposed)
+
+    changes_by_id = {c.id: c for c in changes}
+    assert changes_by_id[to_update.id].action == "update"
+    assert changes_by_id[to_update.id].data.notes == "AI 改的備註"
+    assert changes_by_id[to_delete.id].action == "delete"
+    assert changes_by_id[to_delete.id].data is None
+    assert changes_by_id[new_case.id].action == "add"
+    assert unchanged.id not in changes_by_id
+
+
+def test_compute_pending_changes_empty_when_nothing_changed() -> None:
+    same = [_case(name="用例A")]
+
+    assert compute_pending_changes(same, same) == []
+
+
+def test_merge_pending_changes_keeps_changes_for_different_cases() -> None:
+    change_a = PendingChange(id="a", action="update", data=_case(name="用例A"))
+    change_b = PendingChange(id="b", action="delete")
+
+    merged = merge_pending_changes([change_a], [change_b])
+
+    assert {c.id for c in merged} == {"a", "b"}
+
+
+def test_merge_pending_changes_newer_proposal_replaces_older_one_for_same_case() -> None:
+    """使用者還沒套用第一次的建議，AI 針對同一筆用例又提出新建議——不該疊加成
+    兩筆衝突的待確認項目，新的要蓋掉舊的。"""
+    old_proposal = PendingChange(id="a", action="update", data=_case(name="用例A", step_desc="舊建議"))
+    new_proposal = PendingChange(id="a", action="update", data=_case(name="用例A", step_desc="新建議"))
+
+    merged = merge_pending_changes([old_proposal], [new_proposal])
+
+    assert len(merged) == 1
+    assert merged[0].data.steps[0].description == "新建議"
+
+
+def test_apply_pending_change_add_appends_new_case() -> None:
+    new_case = _case(name="全新用例")
+    pending = [PendingChange(id=new_case.id, action="add", data=new_case)]
+
+    test_cases, remaining = apply_pending_change([], pending, new_case.id)
+
+    assert [tc.name for tc in test_cases] == ["全新用例"]
+    assert remaining == []
+
+
+def test_apply_pending_change_update_replaces_matching_case() -> None:
+    old = _case(name="用例A")
+    updated = old.model_copy(update={"notes": "新備註"})
+    pending = [PendingChange(id=old.id, action="update", data=updated)]
+
+    test_cases, remaining = apply_pending_change([old], pending, old.id)
+
+    assert test_cases[0].notes == "新備註"
+    assert remaining == []
+
+
+def test_apply_pending_change_delete_removes_case() -> None:
+    old = _case(name="用例A")
+    pending = [PendingChange(id=old.id, action="delete")]
+
+    test_cases, remaining = apply_pending_change([old], pending, old.id)
+
+    assert test_cases == []
+    assert remaining == []
+
+
+def test_apply_pending_change_leaves_other_pending_changes_untouched() -> None:
+    a = _case(name="用例A")
+    b = _case(name="用例B")
+    change_a = PendingChange(id=a.id, action="delete")
+    change_b = PendingChange(id=b.id, action="update", data=b.model_copy(update={"notes": "x"}))
+
+    _, remaining = apply_pending_change([a, b], [change_a, change_b], a.id)
+
+    assert remaining == [change_b]
+
+
+def test_apply_pending_change_missing_id_raises() -> None:
+    with pytest.raises(PendingChangeNotFoundError):
+        apply_pending_change([], [], "does-not-exist")
+
+
+def test_apply_pending_change_refuses_when_target_is_locked() -> None:
+    """建議提出之後、套用之前，這筆用例被鎖定了——套用當下要再守一次鎖定保護，
+    不能只信任建議產生當時的狀態。"""
+    locked = _case(name="用例A", locked=True)
+    change = PendingChange(id=locked.id, action="update", data=locked.model_copy(update={"notes": "x"}))
+
+    with pytest.raises(LockedCaseConflictError):
+        apply_pending_change([locked], [change], locked.id)
+
+
+def test_dismiss_pending_change_removes_without_touching_test_cases() -> None:
+    change = PendingChange(id="a", action="delete")
+
+    remaining = dismiss_pending_change([change], "a")
+
+    assert remaining == []
+
+
+def test_dismiss_pending_change_missing_id_raises() -> None:
+    with pytest.raises(PendingChangeNotFoundError):
+        dismiss_pending_change([], "does-not-exist")

@@ -28,6 +28,65 @@ function describeStepsDiff(before: TestCase, after: TestCase): string[] {
 }
 
 /**
+ * 比對「已知是同一筆用例」的新舊內容（由呼叫端用 id 配對好，不靠名稱猜），回傳
+ * 人類可讀的欄位異動描述，例如「優先級從 P2 改成 P1」。抽出來給 diffTestCases
+ * 跟「AI 建議套用」的單筆比對（見 getProposedFieldValues）共用，不要各寫一份。
+ */
+export function describeCaseFieldChanges(before: TestCase, after: TestCase): string[] {
+  const notes: string[] = []
+  if (before.name !== after.name) {
+    notes.push(`名稱從「${before.name}」改成「${after.name}」`)
+  }
+  if (before.module !== after.module) {
+    notes.push('所屬模塊已更新')
+  }
+  if (before.priority !== after.priority) {
+    notes.push(`優先級從 ${before.priority || '（空）'} 改成 ${after.priority || '（空）'}`)
+  }
+  if (before.preconditions !== after.preconditions) {
+    notes.push('前置條件已更新')
+  }
+  notes.push(...describeStepsDiff(before, after))
+  if (before.notes !== after.notes) {
+    notes.push('備註已更新')
+  }
+  return notes
+}
+
+/**
+ * 比對「已知是同一筆用例」的新舊內容，回傳每個有差異的欄位／步驟各自的建議新值，
+ * 供表格在對應欄位下方顯示「AI 建議：...」。key 不含 caseIndex 前綴（呼叫端
+ * 已經知道是哪一筆用例）：name / module / priority / preconditions / notes /
+ * step:<stepIndex>:description / step:<stepIndex>:expected_result。步驟數量
+ * 减少（AI 建議移除某幾個步驟）不會出現在這裡，畫面上改用
+ * describeCaseFieldChanges 的文字摘要呈現，不逐欄位標示「移除」。
+ */
+export function getProposedFieldValues(current: TestCase, proposed: TestCase): Map<string, string> {
+  const values = new Map<string, string>()
+  if (current.name !== proposed.name) values.set('name', proposed.name)
+  if (current.module !== proposed.module) values.set('module', proposed.module)
+  if (current.priority !== proposed.priority) values.set('priority', proposed.priority)
+  if (current.preconditions !== proposed.preconditions) values.set('preconditions', proposed.preconditions)
+  if (current.notes !== proposed.notes) values.set('notes', proposed.notes)
+
+  proposed.steps.forEach((step, index) => {
+    const before = current.steps[index]
+    if (!before) {
+      values.set(`step:${index}:description`, step.description)
+      values.set(`step:${index}:expected_result`, step.expected_result)
+      return
+    }
+    if (before.description !== step.description) {
+      values.set(`step:${index}:description`, step.description)
+    }
+    if (before.expected_result !== step.expected_result) {
+      values.set(`step:${index}:expected_result`, step.expected_result)
+    }
+  })
+  return values
+}
+
+/**
  * 比對聊天前後的測試用例，回傳人類可讀的異動清單（依用例名稱配對，名稱不變就視為同一筆）。
  * 新增／修改的項目會附上該用例在「聊天後」清單裡的編號（從 1 開始，對應表格上顯示的
  * 位置），方便使用者直接去表格裡找到這一筆；已刪除的用例不在聊天後的清單裡了，附編號

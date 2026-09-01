@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
 import {
   addTextMaterial,
+  applyPendingChange,
   deleteMaterial,
+  dismissPendingChange,
   exportExcel,
   generate,
   getConversation,
@@ -23,15 +25,19 @@ import { MaterialSelector } from '../components/MaterialSelector'
 import { ModalOverlay } from '../components/ModalOverlay'
 import { TestCaseTable } from '../components/TestCaseTable'
 import { Tooltip } from '../components/Tooltip'
-import { diffTestCases, getChangedCellKeys, getPreviousValues } from '../diffTestCases'
 import { newId } from '../id'
 import { countMaterialUsage } from '../materialUsage'
 import { extractStreamProgress, type StreamProgressLine } from '../streamProgress'
 import { useDuplicateTabWarning } from '../useDuplicateTabWarning'
 import type { ShellContext } from './ProjectLayout'
-import type { ChatMessage, GenerationResult, ImageRef, UploadedMaterial } from '../types'
+import type { ChatMessage, GenerationResult, ImageRef, PendingChange, TestCase, UploadedMaterial } from '../types'
 
-const EMPTY_RESULT: GenerationResult = { test_cases: [], clarification_questions: [], result_version: 0 }
+const EMPTY_RESULT: GenerationResult = {
+  test_cases: [],
+  clarification_questions: [],
+  result_version: 0,
+  pending_changes: [],
+}
 
 interface WorkspaceNotice {
   message: string
@@ -228,11 +234,15 @@ export function WorkspacePage() {
     })
   }
 
-  const scrollToFirstChange = (keys: Set<string>) => {
-    const first = Array.from(keys)[0]
-    if (!first) return
+  // 「新增」建議還沒對應到任何一筆現有用例，卡片本來就會出現在列表最下方，
+  // 不需要特別捲動；只有 update/delete 建議（對應到既有用例的 id）才捲過去。
+  const scrollToFirstPendingChange = (testCases: TestCase[], pendingChanges: PendingChange[]) => {
+    if (pendingChanges.length === 0) return
+    const pendingIds = new Set(pendingChanges.map((change) => change.id))
+    const index = testCases.findIndex((tc) => pendingIds.has(tc.id))
+    if (index < 0) return
     requestAnimationFrame(() => {
-      document.getElementById(`field-${first}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      document.getElementById(`field-case:${index}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     })
   }
 
@@ -447,16 +457,21 @@ export function WorkspacePage() {
       )
       setResult(res)
 
-      const changes = diffTestCases(beforeTestCases, res.test_cases)
+      // 聊天式編輯不再直接套用進正式的用例清單（見 FIX_NOTES），AI 的建議會
+      // 累積在 res.pending_changes 裡，使用者要到表格逐一點「套用」才會生效——
+      // 這裡只提示有幾筆待確認，不再比較前後差異產生「本次變動摘要」。
       const changeSummary: ChatMessage[] =
-        changes.length > 0
-          ? [{ id: newId(), role: 'assistant', content: `本次變動：\n${changes.map((c) => `・${c}`).join('\n')}` }]
+        res.pending_changes.length > 0
+          ? [
+              {
+                id: newId(),
+                role: 'assistant',
+                content: `AI 提出了 ${res.pending_changes.length} 項用例調整建議，請至下方用例表格逐一確認套用。`,
+              },
+            ]
           : []
 
-      const changedKeys = getChangedCellKeys(beforeTestCases, res.test_cases)
-      setHighlightedKeys(changedKeys)
-      setPreviousValues(getPreviousValues(beforeTestCases, res.test_cases))
-      scrollToFirstChange(changedKeys)
+      scrollToFirstPendingChange(res.test_cases, res.pending_changes)
 
       const finalLog = [...logWithUserMessage, ...changeSummary, ...describeResult(res)]
       setChatLog(finalLog)
@@ -483,6 +498,24 @@ export function WorkspacePage() {
       setBusy(false)
       setBusyStartedAt(null)
       resetStreamProgress()
+    }
+  }
+
+  const handleApplyPendingChange = async (changeId: string) => {
+    try {
+      const updated = await applyPendingChange(projectId, conversationId, changeId)
+      setResult(updated)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '套用建議失敗')
+    }
+  }
+
+  const handleDismissPendingChange = async (changeId: string) => {
+    try {
+      const updated = await dismissPendingChange(projectId, conversationId, changeId)
+      setResult(updated)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '忽略建議失敗')
     }
   }
 
@@ -661,6 +694,9 @@ export function WorkspacePage() {
           focusCaseIndex={workspaceNotice?.focusIndex ?? null}
           focusToken={workspaceNotice?.focusToken}
           imageMap={imageMap}
+          pendingChanges={result.pending_changes}
+          onApplyPendingChange={handleApplyPendingChange}
+          onDismissPendingChange={handleDismissPendingChange}
         />
       </div>
 
