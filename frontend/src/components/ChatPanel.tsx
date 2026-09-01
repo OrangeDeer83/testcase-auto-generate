@@ -35,6 +35,10 @@ interface ChatPanelProps {
    * unmount 時草稿就會跟著消失。 */
   draft: string
   onDraftChange: (draft: string) => void
+  /** 使用者「針對已選用例提問」時鎖定的範圍——有值時代表下一則送出的訊息只會
+   * 讓模型看到這幾筆用例的完整內容，顯示成輸入框上方的一個提示條。 */
+  activeScope: { ids: string[]; labels: string[] } | null
+  onClearScope: () => void
 }
 
 function isImageFile(file: File): boolean {
@@ -54,6 +58,8 @@ export function ChatPanel({
   onChangeSelectedMaterials,
   draft,
   onDraftChange,
+  activeScope,
+  onClearScope,
 }: ChatPanelProps) {
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [attachedPreviewUrl, setAttachedPreviewUrl] = useState<string | null>(null)
@@ -197,6 +203,9 @@ export function ChatPanel({
               </div>
             ) : (
               <>
+                {entry.scopedCaseLabels && entry.scopedCaseLabels.length > 0 && (
+                  <div className="chat-bubble-scope-tag">🎯 針對：{entry.scopedCaseLabels.join('、')}</div>
+                )}
                 <div
                   className={`chat-bubble ${entry.role === 'user' ? 'answer' : 'question'}${entry.isError ? ' chat-bubble-error' : ''}`}
                 >
@@ -266,6 +275,15 @@ export function ChatPanel({
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {activeScope && (
+        <div className="chat-scope-chip">
+          <span>🎯 本次只針對：{activeScope.labels.join('、')}</span>
+          <button type="button" className="secondary" onClick={onClearScope}>
+            取消範圍
+          </button>
         </div>
       )}
 

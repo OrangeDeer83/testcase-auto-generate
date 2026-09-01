@@ -25,6 +25,14 @@ interface FloatingChatProps {
    * 裡，不然一收合就沒了。 */
   draft: string
   onDraftChange: (draft: string) => void
+  /** 每次遞增就代表外層（例如按下「針對已選提問」）要求強制展開這個視窗——
+   * 這個元件自己管理 open 這個 state，外層沒辦法直接呼叫它的 setOpen，只能
+   * 用這種「訊號」的方式請它展開。 */
+  forceOpenToken: number
+  /** 使用者「針對已選用例提問」時鎖定的範圍——有值時代表下一則送出的訊息只會
+   * 讓模型看到這幾筆用例的完整內容。 */
+  activeScope: { ids: string[]; labels: string[] } | null
+  onClearScope: () => void
 }
 
 const MIN_WIDTH = 300
@@ -45,12 +53,16 @@ export function FloatingChat({
   onChangeSelectedMaterials,
   draft,
   onDraftChange,
+  forceOpenToken,
+  activeScope,
+  onClearScope,
 }: FloatingChatProps) {
   const [open, setOpen] = useState(false)
   const [unread, setUnread] = useState(0)
   const [size, setSize] = useState({ width: 380, height: 560 })
   const prevLengthRef = useRef(log.length)
   const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
+  const isFirstForceOpenRef = useRef(true)
 
   useEffect(() => {
     if (log.length > prevLengthRef.current && !open) {
@@ -58,6 +70,16 @@ export function FloatingChat({
     }
     prevLengthRef.current = log.length
   }, [log, open])
+
+  useEffect(() => {
+    // token 從 0 開始，掛載當下這個 effect 也會跑一次——第一次不用理它，不然
+    // 每個對話一開啟就會強制彈出聊天視窗，不是使用者要的行為。
+    if (isFirstForceOpenRef.current) {
+      isFirstForceOpenRef.current = false
+      return
+    }
+    setOpen(true)
+  }, [forceOpenToken])
 
   useEffect(() => {
     if (open) setUnread(0)
@@ -143,6 +165,8 @@ export function FloatingChat({
           onChangeSelectedMaterials={onChangeSelectedMaterials}
           draft={draft}
           onDraftChange={onDraftChange}
+          activeScope={activeScope}
+          onClearScope={onClearScope}
         />
       </div>
     </div>

@@ -47,6 +47,10 @@ export interface ChatMessage {
    * 畫面上要用醒目的警示樣式顯示，讓使用者在浮動聊天視窗裡就能直接看到「這次
    * 沒有成功」，不用另外去頁面上方找一閃即逝、容易被浮動視窗擋住的錯誤訊息。 */
   isError?: boolean
+  /** 這則使用者訊息送出時，是不是限定只針對某幾筆測試用例（見「針對已選用例
+   * 提問」）——有值時顯示這幾筆用例的編號／名稱，讓之後回頭看對話紀錄也知道
+   * 當初這句話是對著哪幾筆用例說的，不是泛指整個對話。 */
+  scopedCaseLabels?: string[]
 }
 
 export interface UploadedMaterial {

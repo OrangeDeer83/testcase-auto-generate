@@ -23,6 +23,10 @@ interface TestCaseTableProps {
   focusToken?: number
   /** 「圖N」編號 → 實際素材縮圖網址的反查表，用來畫每筆用例的「依據圖片」。 */
   imageMap?: Map<number, ImageRef>
+  /** 「針對已選用例提問」模式開啟時，每筆用例卡片會多顯示一個勾選框。 */
+  scopeSelectionMode?: boolean
+  scopeSelectedIds?: Set<string>
+  onToggleScopeSelected?: (caseId: string) => void
 }
 
 interface AutoTextAreaProps {
@@ -88,6 +92,9 @@ export function TestCaseTable({
   focusCaseIndex,
   focusToken,
   imageMap,
+  scopeSelectionMode,
+  scopeSelectedIds,
+  onToggleScopeSelected,
 }: TestCaseTableProps) {
   const isHighlighted = (key: string) => highlightedKeys?.has(key) ?? false
   const previousValueOf = (key: string) => previousValues?.get(key)
@@ -224,10 +231,11 @@ export function TestCaseTable({
         const locked = testCase.locked
         const isCaseDragging = caseDragIndex === caseIndex
         const isCaseDragOver = caseDragOverIndex === caseIndex && caseDragIndex !== caseIndex
+        const isScopeSelected = scopeSelectedIds?.has(testCase.id) ?? false
         return (
         <div
           id={`field-case:${caseIndex}`}
-          className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}${expanded ? '' : ' case-card-collapsed'}${locked ? ' case-card-locked' : ''}${isCaseDragging ? ' case-dragging' : ''}${isCaseDragOver ? ' case-drag-over' : ''}`}
+          className={`case-card${isHighlighted(`case:${caseIndex}`) ? ' cell-highlight' : ''}${expanded ? '' : ' case-card-collapsed'}${locked ? ' case-card-locked' : ''}${isCaseDragging ? ' case-dragging' : ''}${isCaseDragOver ? ' case-drag-over' : ''}${isScopeSelected ? ' case-card-scope-selected' : ''}`}
           key={caseIndex}
           onDragOver={(e) => {
             if (caseDragIndex == null) return
@@ -243,6 +251,15 @@ export function TestCaseTable({
             setCaseDragOverIndex(null)
           }}
         >
+          {scopeSelectionMode && (
+            <input
+              type="checkbox"
+              className="case-scope-checkbox"
+              checked={isScopeSelected}
+              onChange={() => onToggleScopeSelected?.(testCase.id)}
+              aria-label={`針對「${testCase.name || '（未命名用例）'}」提問`}
+            />
+          )}
           <span className="case-number">{caseIndex + 1}</span>
           <div className="case-card-header" onClick={() => toggleExpanded(caseIndex)}>
             {testCases.length > 1 && (

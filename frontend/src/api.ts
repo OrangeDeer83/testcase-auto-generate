@@ -377,6 +377,10 @@ export async function sendChatMessage(
   currentTestCases: TestCase[],
   attachmentMaterialId?: string,
   onDelta?: (text: string) => void,
+  /** 使用者「針對已選用例提問」時，只想讓模型看到這幾筆用例的完整內容（其餘
+   * 只送名稱），縮減送給模型的內容量。不影響 currentTestCases 本身——那份還是
+   * 完整清單，只是多這個欄位告訴後端「這次 prompt 要不要只挑一部分完整呈現」。 */
+  scopedTestCaseIds?: string[],
 ): Promise<GenerationResult> {
   return streamGenerationResult(
     `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/chat`,
@@ -387,6 +391,7 @@ export async function sendChatMessage(
         message,
         current_test_cases: currentTestCases,
         attachment_material_id: attachmentMaterialId ?? null,
+        scoped_test_case_ids: scopedTestCaseIds ?? null,
       }),
     },
     onDelta,
