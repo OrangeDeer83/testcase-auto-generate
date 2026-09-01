@@ -19,6 +19,14 @@ export interface ShellContext {
   conversations: ConversationSummary[]
   refreshShell: () => Promise<void>
   setError: (message: string | null) => void
+  /** 每個對話各自打到一半、還沒送出的聊天草稿，用對話 id 當 key——放在這裡
+   * （而不是 ChatPanel 自己的 state）是因為浮動聊天視窗關閉時 ChatPanel 會
+   * 整個 unmount，內部 state 也會跟著消失；放在 ProjectLayout 這一層，切換
+   * 對話、收合再展開浮動視窗都不會讓它跟著消失，只有整頁重新整理（state
+   * 本來就只活在記憶體裡，本來就該消失）才會清空，符合使用者只要求「同一個
+   * session 內」保留草稿的期待。 */
+  draftsByConversation: Record<string, string>
+  setDraftForConversation: (conversationId: string, draft: string) => void
 }
 
 export function ProjectLayout() {
@@ -29,6 +37,11 @@ export function ProjectLayout() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
+  const [draftsByConversation, setDraftsByConversation] = useState<Record<string, string>>({})
+
+  const setDraftForConversation = (conversationId: string, draft: string) => {
+    setDraftsByConversation((prev) => ({ ...prev, [conversationId]: draft }))
+  }
 
   const refreshShell = async () => {
     if (!projectId) return
@@ -107,7 +120,20 @@ export function ProjectLayout() {
       />
       <div className="app-main">
         {error && <div className="error-banner">{error}</div>}
-        <Outlet context={{ projectId, project, materials, conversations, refreshShell, setError } satisfies ShellContext} />
+        <Outlet
+          context={
+            {
+              projectId,
+              project,
+              materials,
+              conversations,
+              refreshShell,
+              setError,
+              draftsByConversation,
+              setDraftForConversation,
+            } satisfies ShellContext
+          }
+        />
       </div>
       {deleteTarget && (
         <ConfirmDialog
