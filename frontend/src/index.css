@@ -1669,6 +1669,34 @@ button.secondary:hover:not(:disabled) {
   color: var(--color-text-faint);
 }
 
+/* 模型串流輸出時即時抓到的「正在寫哪個用例／問題」清單，跟著「思考中」一起
+   顯示，讓使用者看到具體正在產生的內容，不只是一個乾等的計時器。 */
+.chat-stream-progress {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.chat-stream-progress li {
+  animation: chat-stream-progress-in 0.2s ease;
+}
+
+@keyframes chat-stream-progress-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .chat-bubble.answer {
   background: var(--color-primary);
   color: #fff;

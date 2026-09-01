@@ -1,5 +1,6 @@
 import time
 import uuid
+from collections.abc import Iterator
 
 from openai import OpenAI
 
@@ -50,12 +51,19 @@ def _summarize_messages_for_log(messages: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def chat_completion(messages: list[dict], *, temperature: float = 0.2) -> str:
-    """Send a chat completion request to the internal OpenAI-compatible model.
+def stream_chat_completion(messages: list[dict], *, temperature: float = 0.2) -> Iterator[str]:
+    """Send a chat completion request to the internal OpenAI-compatible model,
+    yielding text chunks as they arrive instead of waiting for the full reply.
 
     `messages` follows the standard OpenAI chat format; user message content
     can be a plain string or a list of {"type": "text"|"image_url", ...} parts
     for multimodal (vision) input.
+
+    改成串流（stream=True）是因為原本整批等完整回應才回傳，前端在這幾分鐘裡
+    完全看不到任何內容、只能顯示一個單純的「思考中」計時器，使用者反映感覺不到
+    模型「正在運作」。串流之後，呼叫端（見 routers/conversations.py）可以邊收
+    邊往前端轉送，前端再從陸續收到的片段裡即時抓出已經寫完的用例名稱／問題內容
+    顯示給使用者看，是「照實描述」正在產生的內容，不是憑空編造的進度文字。
     """
     call_id = uuid.uuid4().hex[:8]
     logger.info(
@@ -63,19 +71,27 @@ def chat_completion(messages: list[dict], *, temperature: float = 0.2) -> str:
     )
 
     started_at = time.monotonic()
+    full_parts: list[str] = []
     try:
-        response = _client.chat.completions.create(
+        stream = _client.chat.completions.create(
             model=settings.llm_model,
             messages=messages,
             temperature=temperature,
+            stream=True,
         )
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta.content
+            if not delta:
+                continue
+            full_parts.append(delta)
+            yield delta
     except Exception:
         logger.exception("LLM 呼叫失敗 call_id=%s", call_id)
         raise
 
-    content = response.choices[0].message.content or ""
     elapsed_ms = int((time.monotonic() - started_at) * 1000)
     logger.info(
-        "LLM 呼叫完成 call_id=%s elapsed_ms=%d\n%s", call_id, elapsed_ms, content
+        "LLM 呼叫完成 call_id=%s elapsed_ms=%d\n%s", call_id, elapsed_ms, "".join(full_parts)
     )
-    return content

@@ -44,27 +44,70 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", 0))
-        self.rfile.read(length)  # 不需要真的看 prompt 內容，一律回固定的用例
-        self._send_json(
-            200,
-            {
+        body = self.rfile.read(length)
+        # 2026-09-01 起 backend 一律用 stream=True 呼叫（見 llm_client.py 的
+        # stream_chat_completion），要看請求體裡的 stream 欄位決定回傳格式，
+        # 不然 OpenAI SDK 的串流用戶端會拿到一個它看不懂的純 JSON 回應，
+        # 整個呼叫直接失敗——這正是這個檔案改成分辨 stream 之前，CI 的
+        # golden-path e2e 測試會炸掉的原因。
+        try:
+            stream_requested = json.loads(body or b"{}").get("stream", False)
+        except json.JSONDecodeError:
+            stream_requested = False
+
+        if stream_requested:
+            self._send_stream()
+        else:
+            self._send_json(
+                200,
+                {
+                    "id": "chatcmpl-mock",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": "mock-model",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": json.dumps(CANNED_RESULT, ensure_ascii=False),
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                },
+            )
+
+    def _send_stream(self) -> None:
+        """回傳 OpenAI 相容的串流格式（Server-Sent Events，每個事件是一個
+        chat.completion.chunk），把固定回覆內容拆成幾段模擬真正串流逐字送出的
+        樣子，順便讓這個假 server 也能驗證前端「即時抓取正在產生的內容」那段
+        邏輯（見 frontend/src/streamProgress.ts）不會在串流情境下整個掛掉。"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        content = json.dumps(CANNED_RESULT, ensure_ascii=False)
+        chunk_size = max(1, len(content) // 8)
+        pieces = [content[i : i + chunk_size] for i in range(0, len(content), chunk_size)]
+
+        def _write_chunk(delta: dict, finish_reason: str | None) -> None:
+            payload = {
                 "id": "chatcmpl-mock",
-                "object": "chat.completion",
+                "object": "chat.completion.chunk",
                 "created": 0,
                 "model": "mock-model",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": json.dumps(CANNED_RESULT, ensure_ascii=False),
-                        },
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
-            },
-        )
+                "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+            }
+            self.wfile.write(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8"))
+
+        _write_chunk({"role": "assistant"}, None)
+        for piece in pieces:
+            _write_chunk({"content": piece}, None)
+        _write_chunk({}, "stop")
+        self.wfile.write(b"data: [DONE]\n\n")
 
     def log_message(self, format: str, *args: object) -> None:
         pass  # 安靜一點，CI log 不用被灌爆
