@@ -8,6 +8,7 @@ import {
   listConversations,
   updateConversation,
 } from '../api'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Sidebar } from '../components/Sidebar'
 import type { ConversationSummary, Project, UploadedMaterial } from '../types'
 
@@ -27,6 +28,7 @@ export function ProjectLayout() {
   const [materials, setMaterials] = useState<UploadedMaterial[]>([])
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
 
   const refreshShell = async () => {
     if (!projectId) return
@@ -73,8 +75,14 @@ export function ProjectLayout() {
     }
   }
 
-  const handleDeleteConversation = async (id: string, name: string) => {
-    if (!window.confirm(`確定要刪除對話「${name}」嗎？聊天紀錄與測試用例都會一起刪除，且無法復原。`)) return
+  const handleDeleteConversation = (id: string, name: string) => {
+    setDeleteTarget({ id, name })
+  }
+
+  const confirmDeleteConversation = async () => {
+    if (!deleteTarget) return
+    const { id } = deleteTarget
+    setDeleteTarget(null)
     setError(null)
     try {
       await deleteConversation(projectId, id)
@@ -101,6 +109,16 @@ export function ProjectLayout() {
         {error && <div className="error-banner">{error}</div>}
         <Outlet context={{ projectId, project, materials, conversations, refreshShell, setError } satisfies ShellContext} />
       </div>
+      {deleteTarget && (
+        <ConfirmDialog
+          title="刪除對話"
+          message={`確定要刪除對話「${deleteTarget.name}」嗎？聊天紀錄與測試用例都會一起刪除，且無法復原。`}
+          confirmLabel="確定刪除"
+          danger
+          onConfirm={confirmDeleteConversation}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   )
 }

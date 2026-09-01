@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createProject, deleteProject, listProjects } from '../api'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import type { ProjectSummary } from '../types'
 
 function formatTime(ms: number): string {
@@ -13,6 +14,7 @@ export function HomePage() {
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null)
 
   const refresh = async () => {
     try {
@@ -41,8 +43,7 @@ export function HomePage() {
     }
   }
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`確定要刪除專案「${name}」嗎？裡面的素材與所有對話都會一起刪除，且無法復原。`)) return
+  const handleDelete = async (id: string) => {
     setError(null)
     try {
       await deleteProject(id)
@@ -86,7 +87,7 @@ export function HomePage() {
                   className="secondary material-remove"
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleDelete(project.id, project.name)
+                    setDeleteTarget(project)
                   }}
                 >
                   刪除
@@ -118,6 +119,19 @@ export function HomePage() {
           </button>
         </div>
       </div>
+      {deleteTarget && (
+        <ConfirmDialog
+          title="刪除專案"
+          message={`確定要刪除專案「${deleteTarget.name}」嗎？裡面的素材與所有對話都會一起刪除，且無法復原。`}
+          confirmLabel="確定刪除"
+          danger
+          onConfirm={() => {
+            handleDelete(deleteTarget.id)
+            setDeleteTarget(null)
+          }}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   )
 }

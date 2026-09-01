@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { ConfirmDialog } from './ConfirmDialog'
 import { useImageLightbox } from './ImageLightbox'
 import { Tooltip } from './Tooltip'
 import { newId } from '../id'
@@ -102,6 +103,7 @@ export function TestCaseTable({
   const [expandedIndices, setExpandedIndices] = useState<Set<number>>(
     () => new Set(testCases.length <= 2 ? testCases.map((_, i) => i) : []),
   )
+  const [deleteCaseIndex, setDeleteCaseIndex] = useState<number | null>(null)
 
   // 模型剛改過的用例自動展開，讓使用者不用自己點開就能看到變動內容。
   useEffect(() => {
@@ -205,10 +207,13 @@ export function TestCaseTable({
   }
 
   const removeCase = (caseIndex: number) => {
-    if (!window.confirm(`確定要刪除「${testCases[caseIndex].name || '（未命名用例）'}」這筆測試用例嗎？無法復原。`)) {
-      return
-    }
-    onChange(testCases.filter((_, idx) => idx !== caseIndex))
+    setDeleteCaseIndex(caseIndex)
+  }
+
+  const confirmRemoveCase = () => {
+    if (deleteCaseIndex === null) return
+    onChange(testCases.filter((_, idx) => idx !== deleteCaseIndex))
+    setDeleteCaseIndex(null)
   }
 
   return (
@@ -596,6 +601,16 @@ export function TestCaseTable({
         + 新增測試用例
       </button>
       {lightbox}
+      {deleteCaseIndex !== null && (
+        <ConfirmDialog
+          title="刪除測試用例"
+          message={`確定要刪除「${testCases[deleteCaseIndex]?.name || '（未命名用例）'}」這筆測試用例嗎？無法復原。`}
+          confirmLabel="確定刪除"
+          danger
+          onConfirm={confirmRemoveCase}
+          onCancel={() => setDeleteCaseIndex(null)}
+        />
+      )}
     </div>
   )
 }

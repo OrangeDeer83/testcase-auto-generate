@@ -2,6 +2,36 @@
 
 > 記錄每次修 bug／改善 UX 時「為什麼壞掉、怎麼修好的、背後用到什麼可以遷移到其他情境的觀念」，主要是寫給使用者看的學習筆記，也順便讓之後回頭查、或下一個接手的 Claude 不用重新翻一次 diff 才搞懂修法。跟 [PROGRESS.md](PROGRESS.md) 的差異：PROGRESS.md 是變更歷史總覽（做了什麼），這份專注在單一問題的根因、修法、與原理本身。維護方式見 `.claude/skills/fix-notes/SKILL.md`。
 
+## 2026-08-31 統一所有確認彈窗的樣式，修正工作區標題列露出捲動內容
+
+### 全部改用同一套自訂確認彈窗，不再用瀏覽器原生 window.confirm
+
+**問題**：畫面上「需要使用者確認」的情境長得不一致——取消勾選有風險的素材，用的是自訂的 `ModalOverlay` 彈窗（深色遮罩、可以分組列出詳細清單）；但刪除測試用例、刪除素材、刪除專案、刪除對話，用的卻是瀏覽器原生 `window.confirm`（單純一個系統對話框，排版、配色完全由瀏覽器決定，不同瀏覽器/作業系統長得還不一樣）。同一個網站裡出現兩種完全不同視覺語言的「確認」互動，使用者體驗不一致。
+
+**修法**：新增共用元件 `ConfirmDialog.tsx`，包在既有的 `ModalOverlay` 之上，統一提供標題、內文、取消／確定兩顆按鈕；有風險的動作（刪除）可以加上 `danger` 屬性，確定按鈕會換成跟用例列表「刪除這筆測試用例」按鈕同一種警示紅色（`#b3312c`），視覺上跟「這是危險動作」的語意對得起來。把原本 5 處 `window.confirm`（`TestCaseTable.tsx` 刪除用例、`MaterialGrid.tsx`／`MaterialRow.tsx` 刪除素材、`HomePage.tsx` 刪除專案、`ProjectLayout.tsx` 刪除對話）全部改用這個元件；連原本就是自訂彈窗的「取消勾選有風險素材」警示視窗也一併重構成用 `ConfirmDialog`（把原本手刻的 `modal-header`／按鈕區塊抽掉，改成把分組清單當作 `message` 傳進去），讓整個專案只剩一套「確認彈窗」的寫法，不是兩套並存。
+
+`window.confirm` 是同步、會阻塞 JavaScript 執行的呼叫（跳出對話框時整個分頁會凍結，等使用者按下按鈕才繼續往下執行），原本的程式碼很自然地寫成「`if (!window.confirm(...)) return; 繼續做事`」這種同步流程；換成自訂彈窗後，跳出視窗跟使用者按下確定是「非同步」的兩個時間點，程式碼要跟著改寫成「先把『準備要刪除的對象』存進 state 觸發畫面顯示彈窗，使用者按下確定時才真正執行動作」的模式（例如 `TestCaseTable.tsx` 的 `removeCase` 從直接做完刪除，拆成 `removeCase`（存 state）+`confirmRemoveCase`（真正刪除）兩個函式）。
+
+**背後的通用觀念**：**瀏覽器原生的 `confirm()`／`alert()`／`prompt()` 都是同步阻塞的 API，這是它們最大的限制，不只是「醜」而已**——同步阻塞代表沒辦法在等待使用者回應的同時做任何其他事，也沒辦法客製化外觀。一旦専案裡已經有自訂彈窗的基礎設施（`ModalOverlay`），把原生 `confirm()` 換成自訂彈窗，程式流程必然要從「同步 if 判斷」改寫成「用 state 記錄『正在詢問使用者』這件事，交給非同步的使用者互動決定下一步」——這是幾乎所有「原生阻塞式互動換成非阻塞 UI 元件」都會遇到的固定改寫模式（同樣的道理也適用於把原生的 `window.prompt()` 換成自訂輸入框、把原生 `<select>` 換成自訂下拉選單元件）。
+
+**檔案**：新增 `frontend/src/components/ConfirmDialog.tsx`；修改 `frontend/src/components/TestCaseTable.tsx`（刪除用例）、`frontend/src/components/MaterialGrid.tsx`（刪除素材、重構取消勾選風險警示視窗）、`frontend/src/components/MaterialRow.tsx`（刪除素材）、`frontend/src/pages/HomePage.tsx`（刪除專案）、`frontend/src/pages/ProjectLayout.tsx`（刪除對話）；`frontend/src/index.css` 新增 `.confirm-dialog-panel`／`.confirm-dialog-message`／`.confirm-dialog-actions`／`.confirm-dialog-danger-button`，並把 `.material-unlock-risk-panel` 改成複合選擇器 `.confirm-dialog-panel.material-unlock-risk-panel`，確保寬度覆寫不受 CSS 檔案裡規則先後順序影響（跟既有 `.modal-overlay.image-viewer-overlay` 用同樣的理由）。
+
+**驗證方式**：`npx tsc --noEmit`、`npx vitest run`（32 個測試全過，這次改動沒有新增/修改任何有測試覆蓋的純邏輯，主要是 UI 互動）。瀏覽器實測（dev 環境 18002/5175，用 `javascript_exec` 直接操作 DOM，這個環境的畫面截圖工具目前無法正常顯示視窗内容）：對一筆未鎖定的測試用例按「刪除這筆測試用例」，確認彈出的是自訂視窗（不是瀏覽器原生對話框）且標題／內文正確；按「取消」確認用例沒有被刪除；再次觸發並按「確定刪除」，確認用例真的從清單消失。同樣方式驗證素材庫的刪除素材彈窗。測試中不慎正式刪除了一筆既有的測試用例，已用直接呼叫 API 的方式把原始內容（從 `backend/logs/app.log` 找到最後一次完整內容）還原回去，不影響使用者原本的測試資料。
+
+### 工作區標題列（對話名稱／匯出 Excel 那一行）捲動時會露出底下的用例，且看起來像懸浮的卡片
+
+**問題**：使用者截圖回報兩個層次的問題。第一次回報：捲動測試用例列表時，固定在畫面上方的標題列（對話名稱、共 N 筆用例、鎖定進度、使用中的素材、匯出 Excel）底下會看到用例卡片的內容「飄過去」，看起來不是「一整片有背景」，而是有東西從縫隙裡露出來。第一輪修完之後使用者又補充一張參考圖：即使背景已經補滿，這個標題列因為跟畫面其他內容一樣，左右兩側都縮排在 `.app-main` 的內距裡，看起來仍然只是內容區裡「浮著」的一個區塊，捲動固定時更像一張懸浮卡片，而不是一條貼齊邊界、真正融入畫面的橫幅。
+
+**修法**：分兩步：
+1. `.workspace-title-row` 用 `position: sticky; top: 0;` 固定在捲動容器（`.app-main`）頂端，本來就有設定不透明的背景色，但標題列跟下面內容之間的間距是用 `margin-bottom: 14px` 留白的——margin 不算在元素自己的 box 裡，`position: sticky` 固定、蓋住捲動內容的範圍只有元素本身的 border-box（含 padding），不包含 margin。捲動時，畫面上「標題列底部再往下 14px」這一小段其實是這個元素的 margin 範圍，沒有任何東西的背景畫在那裡，底下捲動經過的用例卡片就會直接透出來。修法是把這段留白從 `margin-bottom` 改成 `padding-bottom`（併入成 `padding: 4px 0 20px`，移除 `margin-bottom`），讓灰底背景範圍直接往下延伸涵蓋這段留白；同時加上 `border-bottom` 讓標題列跟內容之間有清楚的分隔線，`z-index` 從 5 提高到 10 加強保險。
+2. `.app-main` 左右各有 32px 內距，讓一般內容跟側邊欄保持距離。標題列如果照這個內距乖乖縮排，背景就只會填滿「內容欄」那一段寬度，兩側仍然留白，視覺上還是一個獨立的區塊。改成用等於 `.app-main` 內距的負 margin（`margin: 0 -32px`）把標題列的 box 往左右拉到跟 `.app-main` 的邊界齊平，再用同樣大小的 padding（`padding: 4px 32px 20px`）補回來——背景因此橫跨整個內容區的寬度（貼齊側邊欄與視窗右緣），但裡面的對話名稱、按鈕位置完全不變，仍然跟下面的用例清單維持同一條左右對齊線。
+
+**背後的通用觀念**：（1）**`position: sticky`／`fixed` 元素只會用自己的 border-box（內容加 padding，不含 margin）去遮蓋捲動經過的內容**，這是所有「固定在畫面某處、需要完全遮蓋底下內容」的元件都要注意的通用陷阱：留白只要是用 margin 做的，就一定會在留白範圍露出縫隙，該用 padding 才會算進背景範圍。（2）**「負 margin 等於周圍內距」是讓子元素在一個有內距的容器裡做「滿版／出血（bleed）」效果的標準手法**——外層容器需要內距，讓一般內容不要貼邊，但某個特定的子元素（這裡是想強調成「橫幅」的標題列）想要背景貼齊容器邊界，同時裡面的文字內容還要維持跟其他內容同一條對齊線：用等於容器內距大小的負 margin 把子元素的 box 往外推到跟容器邊界齊平，再用同樣大小的 padding 補回內容的縮排，兩個抵銷之後，看起來就像這個子元素的背景「穿透」了容器的內距、貼齊到邊界，但內容位置完全沒有變。這個技巧在网頁設計中常見於「滿版色塊裡包一欄置中內容」的版面（例如整頁寬的色塊 banner，裡面文字卻只佔中間一欄）。
+
+**檔案**：`frontend/src/index.css`（`.workspace-title-row` 的 `margin-bottom` 改為併入 `padding-bottom`，新增 `border-bottom`，`z-index` 5→10；再加上 `margin: 0 -32px` 搭配 `padding-left/right: 32px` 做滿版背景）。
+
+**驗證方式**：瀏覽器實測（dev 環境 18002/5175，這個環境的畫面截圖工具目前無法正常顯示視窗內容，改用 `javascript_exec` 直接讀取 DOM 的 computed style／geometry 驗證，不是肉眼看畫面）。第一步：讀取 `.workspace-title-row` 的 computed style，確認 `margin-bottom: 0px`、`padding-bottom: 20px`、`border-bottom: 1px solid`、`z-index: 10`，背景色仍是不透明的 `rgb(238, 241, 246)`。第二步（滿版背景）：讀取 `.workspace-title-row` 與 `.app-main` 的 `getBoundingClientRect()`，確認兩者的 `left`／`right` 完全一致（標題列的背景範圍已經跟 `.app-main` 的邊界齊平，不再侷限在內距裡的內容欄寬度）；同時讀取標題列裡對話名稱輸入框、以及下方 `.case-list` 的 `getBoundingClientRect().left`，確認兩者仍然相等（負 margin＋padding 互相抵銷後，內容的左右對齊位置沒有跑掉）。這兩步都是根據 CSS 規則本身（sticky 元素只遮蓋自己的 border-box；負 margin 等於容器內距可以做滿版背景）推導並用 DOM 量測數字驗證，不是單純憑印象猜測；但沒辦法用肉眼直接確認顏色、間距在視覺上「看起來」是否符合使用者的期待，如果使用者實際操作後外觀還是不對，需要請使用者提供更多細節或另一張截圖再進一步排查。
+
 ## 2026-08-31 鎖定的用例改名後會被 AI 悄悄改動，且內容偶爾會被過期資料覆蓋
 
 **問題**：使用者在正式環境對話裡回報：「本次變動」摘要顯示一筆已鎖定的用例「步驟 2 的內容有調整」，但同一則回覆裡又同時出現「已鎖定審核，AI 嘗試調整但未套用」的提示——兩句話互相矛盾。追查對話紀錄（`backend/logs/app.log`）發現真正發生過的情況比表面看到的更嚴重：這筆用例曾經被 AI 悄悄改名成完全不同的名字、同時解除鎖定，往後連續好幾十輪對話裡都維持在「已解鎖、內容持續被改」的狀態，使用者完全沒被提示過，直到某次手動把名字跟鎖定狀態改回來才恢復正常。
