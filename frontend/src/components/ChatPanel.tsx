@@ -16,6 +16,10 @@ const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.md,.markdown,.txt,.png,.jpg,.jpeg
 interface ChatPanelProps {
   log: ChatMessage[]
   busy: boolean
+  /** busy 這次是什麼時候開始的（ms 時間戳，busy 為 false 時是 null）——用來算
+   * 「思考中」要顯示的已等待秒數，不能自己在這個元件裡從 0 累加：這個元件
+   * 收合時會被 unmount，重新展開後從 0 重新算就會讓等待秒數看起來被重置。 */
+  busyStartedAt: number | null
   onSend: (message: string, file?: File) => void
   materials: UploadedMaterial[]
   selectedMaterialIds: string[]
@@ -36,6 +40,7 @@ function isImageFile(file: File): boolean {
 export function ChatPanel({
   log,
   busy,
+  busyStartedAt,
   onSend,
   materials,
   selectedMaterialIds,
@@ -50,7 +55,12 @@ export function ChatPanel({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
   const { open: openPreview, lightbox } = useImageLightbox()
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  // 初始值不能直接寫死 0——如果使用者是在請求已經進行到一半時才（重新）展開
+  // 這個元件（例如關閉浮動視窗又重新點開），busyStartedAt 這時已經是稍早的
+  // 時間戳，一掛載就該直接算出「已經過了多久」，不是從 0 開始算。
+  const [elapsedSeconds, setElapsedSeconds] = useState(() =>
+    busyStartedAt ? Math.max(0, Math.floor((Date.now() - busyStartedAt) / 1000)) : 0,
+  )
 
   // 送出前粗估這次請求的內容量會不會讓模型處理逾時（見 materialRisk.ts 的係數
   // 說明），過量就直接擋下送出，而不是讓使用者等到卡住才知道——2026-08-28
@@ -86,14 +96,17 @@ export function ChatPanel({
   }, [log, busy])
 
   useEffect(() => {
-    if (!busy) {
+    if (!busyStartedAt) {
       setElapsedSeconds(0)
       return
     }
-    setElapsedSeconds(0)
-    const timer = setInterval(() => setElapsedSeconds((s) => s + 1), 1000)
+    // 每次都用「現在時間 - 請求開始時間」重新算，不是單純累加——這樣不管這個
+    // 元件中途有沒有被 unmount 再重新掛載過，算出來的都還是真正經過的秒數。
+    const update = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - busyStartedAt) / 1000)))
+    update()
+    const timer = setInterval(update, 1000)
     return () => clearInterval(timer)
-  }, [busy])
+  }, [busyStartedAt])
 
   const canSend = (draft.trim() || attachedFile) && !busy && !overloaded
 
