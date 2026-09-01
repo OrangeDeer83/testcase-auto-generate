@@ -1763,7 +1763,14 @@ button.secondary:hover:not(:disabled) {
      background——position: sticky 固定的只有元素本身的 box，捲動到它下面那一小段
      margin 範圍時，底下的用例卡片會直接露出來，看起來像從標題列底下飄過去。
      改成整段留白都用 padding，讓灰底背景整片往下延伸蓋住，不留任何沒上色的縫。 */
-  padding: 4px 0 20px;
+  /* .app-main 左右各有 32px 的內距，讓一般內容跟側邊欄保持距離；這個標題列如果
+     照原本內距乖乖縮排，看起來就只是內容區裡「浮著」的一個區塊，捲動固定時更
+     明顯像懸浮的卡片，而不是一整條貼齊邊界的橫幅。用等於 .app-main 內距的負
+     margin 把它左右拉到跟 .app-main 的邊界齊平，再用同樣大小的 padding 補回來，
+     讓文字/按鈕的位置仍然跟下面的用例清單對齊——效果是背景橫跨整個內容區的寬度
+     （貼齊側邊欄與視窗右緣），但裡面的內容位置完全不變。 */
+  margin: 0 -32px;
+  padding: 4px 32px 20px;
   position: sticky;
   top: 0;
   background: var(--color-bg);
