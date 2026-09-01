@@ -64,7 +64,8 @@ function hydrateChatLog(chatLog: ChatMessage[], materials: UploadedMaterial[]): 
 
 export function WorkspacePage() {
   const { conversationId } = useParams<{ conversationId: string }>()
-  const { projectId, materials, refreshShell, setError } = useOutletContext<ShellContext>()
+  const { projectId, materials, refreshShell, setError, draftsByConversation, setDraftForConversation } =
+    useOutletContext<ShellContext>()
   const hasDuplicateTab = useDuplicateTabWarning(conversationId)
 
   const [conversationName, setConversationName] = useState('')
@@ -617,6 +618,8 @@ export function WorkspacePage() {
         testCases={result.test_cases}
         imageMap={imageMap}
         onChangeSelectedMaterials={handleSelectedMaterialsChange}
+        draft={draftsByConversation[conversationId] ?? ''}
+        onDraftChange={(draft) => setDraftForConversation(conversationId, draft)}
       />
 
       {showMaterials && (

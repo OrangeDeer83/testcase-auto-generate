@@ -2,6 +2,18 @@
 
 > 記錄每次修 bug／改善 UX 時「為什麼壞掉、怎麼修好的、背後用到什麼可以遷移到其他情境的觀念」，主要是寫給使用者看的學習筆記，也順便讓之後回頭查、或下一個接手的 Claude 不用重新翻一次 diff 才搞懂修法。跟 [PROGRESS.md](PROGRESS.md) 的差異：PROGRESS.md 是變更歷史總覽（做了什麼），這份專注在單一問題的根因、修法、與原理本身。維護方式見 `.claude/skills/fix-notes/SKILL.md`。
 
+## 2026-08-31 收合浮動聊天視窗、或切換對話時，打到一半的草稿會消失
+
+**問題**：使用者按浮動聊天視窗右上角的叉叉關閉視窗、或切換到另一個對話再切回來，打到一半、還沒送出的訊息內容就不見了。使用者的期待很明確：草稿只要活在同一個瀏覽器分頁的這次操作期間（session）就好，重新整理頁面或關閉分頁讓它消失是可以接受的；但單純收合視窗、或在對話之間切換來切去，不應該把還沒送出的內容弄丟；而且每個對話的草稿要各自獨立，不能互相蓋掉。
+
+**修法**：根因是草稿（`draft`）原本用 `useState` 存在 `ChatPanel.tsx` 元件自己裡面，而 `ChatPanel` 只有在浮動視窗展開（`open === true`）時才會被 `FloatingChat.tsx` 渲染出來——按叉叉收合時 `FloatingChat` 直接不渲染 `ChatPanel`，這個元件連同它裡面的 `draft` state 就整個被 React unmount 銷毀掉了，草稿當然就沒了；切換對話則是換了一個 `conversationId`，`WorkspacePage` 重新掛載，同樣的 unmount 也會發生一次。修法是把草稿的 state 往上移到 `ProjectLayout.tsx`（這一層在使用者停留於同一個專案期間、不管展開/收合浮動視窗或切換哪個對話都不會被 unmount），存成 `Record<對話 id, 草稿內容>`，透過既有的 `ShellContext` 往下傳給 `WorkspacePage`，`WorkspacePage` 依目前的 `conversationId` 取出對應的草稿，再往下傳給 `FloatingChat`、`ChatPanel`。`ChatPanel` 原本自己管理的 `useState('')` 整個拿掉，改成完全由外層控制的 controlled component（`draft` 讀外面傳進來的值、`onDraftChange` 把使用者輸入的內容回傳給外層存），元件本身不再擁有這份狀態，也就不會因為自己被 unmount 而弄丟它。因為 `ProjectLayout` 的這份 state 純粹活在瀏覽器記憶體裡，沒有寫進 `localStorage`／後端，重新整理頁面或關閉分頁就會自然消失，剛好符合使用者說的「只要在 session 內保留就好」。
+
+**背後的通用觀念**：**React 元件的 `useState` 只活在這個元件被掛載（mounted）的期間，元件一旦因為條件渲染（像這裡的 `if (!open) return ...`）或路由切換（像這裡換了 `conversationId`）被 unmount，它自己的 state 就會被徹底銷毀，重新掛載時是全新的、初始值的 state，不是「暫停後恢復」**——這是很多「資料神秘消失」bug 的共同根因：直覺上會覺得「我只是把視窗關起來」，但對 React 來說，如果那個「視窗」在程式碼裡是條件渲染出來的，關起來這個動作在底層其實是「把整棵子樹連同它所有的 state 一起摧毀」。判斷一份狀態該放在哪一層元件，關鍵問題永遠是：「這份資料需要活多久、跨越哪些操作還要保留？」把它放在資料需要存活的整段期間內、始終保持掛載的最上層祖先元件裡（這裡是 `ProjectLayout`，跨越了浮動視窗開關、對話切換這兩種操作），而不是放在使用者實際看到、操作的那個元件本身——這兩者的生命週期經常對不上。
+
+**檔案**：`frontend/src/pages/ProjectLayout.tsx`（`ShellContext` 新增 `draftsByConversation`／`setDraftForConversation`，新增對應的 state 與 setter）、`frontend/src/pages/WorkspacePage.tsx`（從 context 取出草稿並往下傳給 `FloatingChat`）、`frontend/src/components/FloatingChat.tsx`（新增 `draft`／`onDraftChange` props 並往下傳給 `ChatPanel`）、`frontend/src/components/ChatPanel.tsx`（移除自己的 `useState('')`，改成完全受控的 `draft`／`onDraftChange` props）。
+
+**驗證方式**：`npx tsc --noEmit`、`npx vitest run`（32 個測試全過，這次改動是把 state 換位置、沒有新增可獨立測試的純邏輯）。瀏覽器實測（dev 環境 18002/5175）：在浮動聊天視窗打一段文字，按叉叉關閉再重新點開，確認文字還在；切換到另一個對話，確認那邊的草稿欄位是空的（不會被前一個對話的內容污染），輸入另一段文字後再切回原本的對話，確認兩邊的草稿內容都各自保留、沒有互相覆蓋。
+
 ## 2026-08-31 聊天送出失敗（例如模型逾時）時，浮動視窗裡完全看不到任何通知
 
 **問題**：使用者反映：模型逾時沒有回應時，常常只看到「思考中…（已等待 N 秒）」的計時器直接消失，感覺不到有任何錯誤通知。追查程式碼後發現：`/chat` 逾時確實會被正確攔下轉成「模型服務暫時無回應，請稍後再試一次」的錯誤訊息，畫面上也確實有呼叫 `setError(...)` 顯示——但顯示的位置是 `ProjectLayout.tsx` 裡跨頁共用的 `.error-banner`，畫在整個頁面最上方；而使用者平常操作聊天，看的是右下角的浮動聊天視窗（`FloatingChat.tsx`，`position: fixed`，跟頁面本身的捲動、版面完全脫鉤）。錯誤訊息雖然「有顯示」，但顯示在使用者視線根本不會看到的地方，等於沒通知到。

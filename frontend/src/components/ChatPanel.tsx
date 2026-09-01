@@ -22,6 +22,11 @@ interface ChatPanelProps {
   testCases: TestCase[]
   imageMap: Map<number, ImageRef>
   onChangeSelectedMaterials: (ids: string[]) => void
+  /** 打到一半、還沒送出的草稿——由外層（FloatingChat 往上到 ProjectLayout）
+   * 依對話 id 保存並控制，這裡不能自己用 useState，不然這個元件被收合
+   * unmount 時草稿就會跟著消失。 */
+  draft: string
+  onDraftChange: (draft: string) => void
 }
 
 function isImageFile(file: File): boolean {
@@ -37,8 +42,9 @@ export function ChatPanel({
   testCases,
   imageMap,
   onChangeSelectedMaterials,
+  draft,
+  onDraftChange,
 }: ChatPanelProps) {
-  const [draft, setDraft] = useState('')
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [attachedPreviewUrl, setAttachedPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -119,7 +125,7 @@ export function ChatPanel({
   const submit = () => {
     if (!canSend) return
     onSend(draft.trim(), attachedFile ?? undefined)
-    setDraft('')
+    onDraftChange('')
     setAttachedFile(null)
     setAttachedPreviewUrl(null)
   }
@@ -255,7 +261,7 @@ export function ChatPanel({
           value={draft}
           disabled={busy}
           placeholder="輸入回答，或下達修改指令…也可以直接貼上截圖（Ctrl+V）"
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => onDraftChange(e.target.value)}
           onPaste={handlePasteImage}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {

@@ -12,6 +12,11 @@ interface FloatingChatProps {
   testCases: TestCase[]
   imageMap: Map<number, ImageRef>
   onChangeSelectedMaterials: (ids: string[]) => void
+  /** 打到一半、還沒送出的草稿——由外層（ProjectLayout）依對話 id 保存，收合
+   * 這個浮動視窗時 ChatPanel 會 unmount，草稿不能存在 ChatPanel 自己的 state
+   * 裡，不然一收合就沒了。 */
+  draft: string
+  onDraftChange: (draft: string) => void
 }
 
 const MIN_WIDTH = 300
@@ -28,6 +33,8 @@ export function FloatingChat({
   testCases,
   imageMap,
   onChangeSelectedMaterials,
+  draft,
+  onDraftChange,
 }: FloatingChatProps) {
   const [open, setOpen] = useState(false)
   const [unread, setUnread] = useState(0)
@@ -122,6 +129,8 @@ export function FloatingChat({
           testCases={testCases}
           imageMap={imageMap}
           onChangeSelectedMaterials={onChangeSelectedMaterials}
+          draft={draft}
+          onDraftChange={onDraftChange}
         />
       </div>
     </div>
