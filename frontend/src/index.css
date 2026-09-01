@@ -1769,17 +1769,23 @@ button.secondary:hover:not(:disabled) {
      margin 把它左右拉到跟 .app-main 的邊界齊平，再用同樣大小的 padding 補回來，
      讓文字/按鈕的位置仍然跟下面的用例清單對齊——效果是背景橫跨整個內容區的寬度
      （貼齊側邊欄與視窗右緣），但裡面的內容位置完全不變。 */
-  margin: 0 -32px;
-  padding: 4px 32px 20px;
+  /* position: sticky 的固定「基準線」只認 top 這個位移值（相對於捲動容器
+     .app-main 的 padding box），跟這個元素自己的 margin 完全無關；但「還沒
+     捲動到需要固定之前」的初始位置，仍然是照一般排版流程算的，會照樣吃到
+     margin。只改 top（見下面）雖然能讓固定基準線貼齊 .app-main 真正的頂端，
+     但初始狀態（還沒捲動）时元素仍停在原本、沒被貼齊的位置，要捲動一小段
+     之後才會被「推」上去貼齊——這不是使用者要的效果，使用者要的是「一開始
+     就已經貼齊頂端」，不是「捲上去才貼齊」。所以垂直方向也要比照左右邊界
+     的做法，用等於 .app-main 內距的負 margin（-24px）把初始位置直接拉到跟
+     top 的固定基準線同一個位置，兩者一致，從第一眼看到畫面開始就已經貼齊，
+     不會有「捲動瞬間被推上去」的過程。 */
+  margin: -24px -32px 0;
+  padding: 28px 32px 20px;
   position: sticky;
-  /* position: sticky 判斷「該不該固定」的基準，是捲動容器（.app-main）自己的
-     padding box，跟這個標題列本身的 margin 完全無關——就算前面把左右 margin
-     拉出去貼齊邊界，垂直方向能貼到的極限還是 .app-main 的 padding-top（24px）
-     那一條線，再上面的 24px 缺口永遠貼不到，一定會露出一小截空隙。這裡不去動
-     共用的 .app-main（會連帶影響專案素材庫那頁的留白，波及範圍太大），而是把
-     sticky 的 top 位移設成 -24px：等於告訴瀏覽器「固定的基準線再往上推 24px」，
-     捲動時標題列會先跟著頁面慢慢往上滑那 24px，貼齊 .app-main 真正的頂端之後
-     才卡住，不多動 .app-main 本身也能讓背景真正頂到最上緣。 */
+  /* 固定基準線同樣要設成 -24px（相對於 .app-main 的 padding-top 24px 往上
+     推 24px，等於貼齊 .app-main 真正的頂端），才會跟上面用 margin 拉到的
+     初始位置對得起來；只改其中一個都會兩邊對不齊。不去動共用的 .app-main
+     本身（它的內距同時影響專案素材庫那頁，改了波及範圍太大）。 */
   top: -24px;
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-border-soft);
