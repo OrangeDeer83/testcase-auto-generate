@@ -348,6 +348,10 @@ export function WorkspacePage() {
   const handleSendMessage = async (message: string, file?: File) => {
     setBusy(true)
     setError(null)
+    // 送出失敗時（例如模型逾時）要能在對話紀錄裡插入一則錯誤訊息，所以這裡要在
+    // try/catch 外面保留一份「目前為止已經確定要顯示」的紀錄；catch 拿不到 try
+    // 區塊內用 const 宣告的 logWithUserMessage，用這個外層變數代替。
+    let logSoFar = chatLog
     try {
       let attachmentMaterialId: string | undefined
       let attachmentEntry: ChatMessage | null = null
@@ -376,6 +380,7 @@ export function WorkspacePage() {
       }
 
       const logWithUserMessage = [...chatLog, attachmentEntry]
+      logSoFar = logWithUserMessage
       setChatLog(logWithUserMessage)
 
       const beforeTestCases = result.test_cases
@@ -408,7 +413,18 @@ export function WorkspacePage() {
         setImageMap(new Map(refs.map((ref) => [ref.number, ref])))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '送出訊息失敗')
+      const message = err instanceof Error ? err.message : '送出訊息失敗'
+      setError(message)
+      // 「思考中」的計時器一消失（busy 變 false），使用者眼前的浮動聊天視窗
+      // 就什麼都看不到了——頁面上方的 error-banner 常常被浮動視窗擋住或不在
+      // 視野範圍內，等於沒通知到。改成直接在對話紀錄裡插入一則錯誤訊息，
+      // 顯示在原本「思考中」泡泡的同一個位置，使用者不用移開視線就看得到。
+      const logWithError: ChatMessage[] = [
+        ...logSoFar,
+        { id: newId(), role: 'assistant', content: message, isError: true },
+      ]
+      setChatLog(logWithError)
+      await persistChatLog(logWithError)
     } finally {
       setBusy(false)
     }

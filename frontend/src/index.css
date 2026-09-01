@@ -1460,7 +1460,13 @@ button.secondary:hover:not(:disabled) {
   border: 1px solid #f3c2bd;
   border-radius: var(--radius-md);
   padding: 12px 16px;
-  margin-bottom: 16px;
+  /* 原本是 16px。工作區頁面的 .workspace-title-row 用 margin-top: -24px 把自己
+     往上拉貼齊 .app-main 頂端（見上面該規則的註解），這個負 margin 沒辦法區分
+     「上面什麼都沒有」跟「上面剛好有這則錯誤訊息」兩種情況，如果這裡的
+     margin-bottom 小於 24px，錯誤訊息的最下面幾像素就會被標題列的背景蓋住。
+     改成剛好 24px（跟那個負 margin 的量一致）兩者互相抵銷，不管有沒有這則
+     錯誤訊息，工作區標題列都不會蓋到任何內容。 */
+  margin-bottom: 24px;
   font-size: 0.85rem;
   box-shadow: var(--shadow-sm);
 }
@@ -1666,6 +1672,17 @@ button.secondary:hover:not(:disabled) {
 .chat-bubble.answer {
   background: var(--color-primary);
   color: #fff;
+}
+
+/* 送出訊息失敗（例如模型逾時、連線失敗）時的警示樣式，跟頁面上方共用的
+   .error-banner 用同一組顏色，但直接顯示在浮動聊天視窗裡「思考中」原本
+   所在的位置——使用者當下注意力就在這裡，不用另外去找容易被浮動視窗
+   擋住、或捲動出視野外的頁面級錯誤訊息。 */
+.chat-bubble.chat-bubble-error {
+  background: #fdecea;
+  color: #9a2b1f;
+  border: 1px solid #f3c2bd;
+  box-shadow: none;
 }
 
 .chat-bubble img {

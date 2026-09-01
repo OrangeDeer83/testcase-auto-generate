@@ -43,6 +43,10 @@ export interface ChatMessage {
   materialId?: string
   imageUrl?: string
   questions?: ClarificationQuestion[]
+  /** 這則助手訊息是不是一次失敗的回報（例如模型逾時、連線失敗）——true 的話
+   * 畫面上要用醒目的警示樣式顯示，讓使用者在浮動聊天視窗裡就能直接看到「這次
+   * 沒有成功」，不用另外去頁面上方找一閃即逝、容易被浮動視窗擋住的錯誤訊息。 */
+  isError?: boolean
 }
 
 export interface UploadedMaterial {
