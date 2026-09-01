@@ -173,8 +173,10 @@ export function ChatPanel({
               </div>
             ) : (
               <>
-                <div className={`chat-bubble ${entry.role === 'user' ? 'answer' : 'question'}`}>
-                  {entry.content}
+                <div
+                  className={`chat-bubble ${entry.role === 'user' ? 'answer' : 'question'}${entry.isError ? ' chat-bubble-error' : ''}`}
+                >
+                  {entry.isError ? `⚠️ ${entry.content}` : entry.content}
                   {entry.imageUrl && (
                     <img
                       className="chat-bubble-image"
