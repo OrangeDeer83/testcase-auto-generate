@@ -27,7 +27,7 @@ SYSTEM_PROMPT = """你是一位資深 QA 測試工程師，任務是根據使用
     }
   ],
   "clarification_questions": [
-    {"id": "唯一識別碼，例如 q1", "question": "具體的澄清問題", "context": "說明此問題對應到哪份文件/哪張截圖的哪個部分，為何無法確定"}
+    {"id": "唯一識別碼，例如 q1", "question": "具體的澄清問題", "context": "說明此問題對應到哪份文件/哪張截圖的哪個部分，為何無法確定", "related_test_case_names": ["這個問題影響到的測試用例名稱"]}
   ]
 }
 
@@ -45,7 +45,8 @@ SYSTEM_PROMPT = """你是一位資深 QA 測試工程師，任務是根據使用
 6. 所有文字使用繁體中文。
 7. 任何字串欄位的內容裡都絕對不可以出現半形雙引號 " ——包含舉例、引用畫面文字、陣列/程式碼片段等情況。需要引用或舉例時一律改用全形「」，例如要表達陣列 ["A", "A"] 時要寫成「A、A」或 (A, A)，不可以直接把 " 寫進字串內容，否則會破壞 JSON 格式。
 8. 每筆測試用例如果是根據前面素材內容裡某幾張截圖寫的（例如描述畫面上的元素、狀態、文字、操作結果），把對應的圖片編號（素材內容裡標示的「圖N」，只填數字 N）填進 based_on_images 陣列；如果這筆用例主要是根據文件文字、或不是針對特定某張截圖，based_on_images 留空陣列即可，不要為了填欄位而硬猜。
-9. 只回傳 JSON 本身。
+9. 每個 clarification_questions 都要填 related_test_case_names：列出這個問題會影響到哪幾筆測試用例的名稱（通常是因為這個疑問而暫時留白/不確定的那幾筆）。這個欄位之後會被用來判斷「使用者回答這個問題時，只需要重新看到哪些用例」，**漏列的代價遠大於多列**——不確定某筆用例算不算相關時，寧可列進去，不要為了精簡而漏掉；如果這個問題不是針對特定用例（例如整體性的規格疑問），留空陣列即可。
+10. 只回傳 JSON 本身。
 """
 
 SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用者以對話方式協作維護一份測試用例清單。
@@ -79,8 +80,9 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
     }
   ],
   "clarification_questions": [
-    {"id": "唯一識別碼，例如 q1", "question": "具體的澄清問題", "context": "說明為何無法確定"}
-  ]
+    {"id": "唯一識別碼，例如 q1", "question": "具體的澄清問題", "context": "說明為何無法確定", "related_test_case_names": ["這個問題影響到的測試用例名稱"]}
+  ],
+  "needs_full_context": false
 }
 
 規則：
@@ -99,7 +101,9 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
 7. 每筆測試用例如果是根據前面素材內容裡某幾張截圖寫的，把對應的圖片編號（素材內容裡標示的「圖N」，只填數字 N）填進 based_on_images 陣列；不是針對特定截圖的用例留空陣列即可。新增或修改用例時要重新判斷這個欄位，不要照抄舊值。
 8. 所有文字使用繁體中文。
 9. 任何字串欄位的內容裡都絕對不可以出現半形雙引號 " ——包含舉例、引用畫面文字、陣列/程式碼片段等情況。需要引用或舉例時一律改用全形「」，例如要表達陣列 ["A", "A"] 時要寫成「A、A」或 (A, A)，不可以直接把 " 寫進字串內容，否則會破壞 JSON 格式。
-10. 只回傳 JSON 本身。
+10. 每個 clarification_questions 都要填 related_test_case_names（規則同產生用例時），漏列的代價遠大於多列，不確定就列進去。
+11. 如果你這次收到的「目前的測試用例清單」被告知只是「本次範圍」（訊息裡會有明確說明），而使用者最新的訊息內容明顯牽涉到範圍外的用例、或要求的操作範圍明顯比「本次範圍」更大（例如要求批次調整很多筆、或提到了範圍清單以外的用例名稱），你在目前資訊下沒辦法正確處理，不要嘗試用猜的處理，也不要因此把任何澄清問題當作已解決移除；把 needs_full_context 設為 true，test_cases 維持只回傳你看得到的「本次範圍」（不變即可），系統會自動改用完整清單重新問你一次。除此之外的所有情況 needs_full_context 都是 false。
+12. 只回傳 JSON 本身。
 """
 
 
@@ -201,15 +205,60 @@ def build_chat_messages(
     pending_questions: list[ClarificationQuestion],
     chat_history: list[ChatMessage],
     latest_message: str,
+    scoped_ids: set[str] | None = None,
 ) -> list[dict]:
+    """`scoped_ids` 有給值時，代表使用者正在回覆「目前尚未解決的澄清問題」，這些
+    問題在上一輪由模型自己標記了 related_test_case_names（見 resolve_related_
+    test_case_ids），範圍就是那些用例的 id——目的是縮減送給模型的內容量：大部分
+    體積來自每筆用例完整的步驟描述，範圍外的用例只送名稱，不送步驟細節。範圍外
+    的用例名稱清單還是會送，讓模型至少知道「還有哪些用例存在」；模型若判斷這次
+    訊息其實牽涉到範圍外的內容，應該回報 needs_full_context=true，由呼叫端（見
+    routers/conversations.py）自動改用完整清單重新問一次，不是自己用猜的處理。"""
     user_content = build_material_content(materials)
 
-    test_cases_json = json.dumps(
-        [tc.model_dump() for tc in current_test_cases], ensure_ascii=False
-    )
-    user_content.append({"type": "text", "text": f"目前的測試用例清單（JSON）：\n{test_cases_json}"})
+    if scoped_ids:
+        in_scope = [tc for tc in current_test_cases if tc.id in scoped_ids]
+        out_of_scope = [tc for tc in current_test_cases if tc.id not in scoped_ids]
+        test_cases_json = json.dumps([tc.model_dump() for tc in in_scope], ensure_ascii=False)
+        user_content.append(
+            {
+                "type": "text",
+                "text": (
+                    "使用者正在回覆先前的澄清問題，這是「本次範圍」的測試用例完整內容"
+                    "（JSON，只包含跟待回答問題相關的用例）：\n" + test_cases_json
+                ),
+            }
+        )
+        if out_of_scope:
+            other_names = "\n".join(f"- {tc.name}" for tc in out_of_scope)
+            user_content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        "除了本次範圍之外，這個對話裡還有以下測試用例（只列名稱，不含步驟細節，"
+                        "本次不需要處理，你看不到它們的實際內容，回傳的 test_cases 陣列裡也不需要"
+                        "包含它們）：\n" + other_names
+                    ),
+                }
+            )
+        user_content.append(
+            {
+                "type": "text",
+                "text": (
+                    "回傳的 test_cases 陣列**只需要包含「本次範圍」裡的用例**（可以修改內容、"
+                    "也可以省略某一筆代表要刪除它），不要把範圍外的用例也放進來，也不要為了範圍外"
+                    "的內容新增用例，除非使用者這次的訊息本身明確要求新增一筆全新的用例。"
+                ),
+            }
+        )
+        locked_names = [tc.name for tc in in_scope if tc.locked]
+    else:
+        test_cases_json = json.dumps(
+            [tc.model_dump() for tc in current_test_cases], ensure_ascii=False
+        )
+        user_content.append({"type": "text", "text": f"目前的測試用例清單（JSON）：\n{test_cases_json}"})
+        locked_names = [tc.name for tc in current_test_cases if tc.locked]
 
-    locked_names = [tc.name for tc in current_test_cases if tc.locked]
     if locked_names:
         user_content.append(
             {

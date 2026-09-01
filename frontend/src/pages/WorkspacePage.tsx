@@ -98,6 +98,10 @@ export function WorkspacePage() {
   // 時才真的 setState，天然節流。
   const streamBufferRef = useRef('')
   const [streamingLines, setStreamingLines] = useState<StreamProgressLine[]>([])
+  // 自動縮小範圍後，模型發現資訊不夠、後端正在用完整清單重新問一次時的過程
+  // 說明（見 api.ts streamGenerationResult 的 onNotice）——跟 streamingLines
+  // 分開放，因為它不是從模型輸出的 JSON 片段抓出來的，是後端明確送的一句話。
+  const [retryNotice, setRetryNotice] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [highlightedKeys, setHighlightedKeys] = useState<Set<string>>(new Set())
   const [previousValues, setPreviousValues] = useState<Map<string, string>>(new Map())
@@ -346,11 +350,23 @@ export function WorkspacePage() {
     streamBufferRef.current += text
     const lines = extractStreamProgress(streamBufferRef.current)
     setStreamingLines((prev) => (lines.length > prev.length ? lines : prev))
+    setRetryNotice(null)
+  }
+
+  // 後端自動縮小範圍後發現資訊不夠、正在用完整清單重新問一次——這次的 delta
+  // 會是全新一批模型輸出，先前累積的片段（可能只是不完整的 JSON 片段）要清掉
+  // 重算，不然新舊內容混在同一個 buffer 裡，extractStreamProgress 的正規表示式
+  // 會抓出語意錯亂的內容。
+  const handleStreamNotice = (text: string) => {
+    streamBufferRef.current = ''
+    setStreamingLines([])
+    setRetryNotice(text)
   }
 
   const resetStreamProgress = () => {
     streamBufferRef.current = ''
     setStreamingLines([])
+    setRetryNotice(null)
   }
 
   const handleGenerate = async () => {
@@ -427,6 +443,7 @@ export function WorkspacePage() {
         beforeTestCases,
         attachmentMaterialId,
         handleStreamDelta,
+        handleStreamNotice,
       )
       setResult(res)
 
@@ -652,6 +669,7 @@ export function WorkspacePage() {
         busy={busy}
         busyStartedAt={busyStartedAt}
         streamingLines={streamingLines}
+        retryNotice={retryNotice}
         onSend={handleSendMessage}
         materials={materials}
         selectedMaterialIds={selectedMaterialIds}

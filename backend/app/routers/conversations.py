@@ -23,6 +23,8 @@ from app.services.test_case_lock import (
     check_result_version,
     enforce_lock_on_llm_result,
     enforce_lock_on_manual_edit,
+    merge_scoped_llm_result,
+    resolve_related_test_case_ids,
 )
 
 router = APIRouter(prefix="/api/projects/{project_id}/conversations", tags=["conversations"])
@@ -220,13 +222,21 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
     pending_questions = conversation.last_result.clarification_questions if conversation.last_result else []
     prior_history = list(conversation.llm_history)
 
+    # 使用者正在回覆「目前尚未解決的澄清問題」時，自動只把那幾筆用例的完整內容
+    # 送給模型（見 resolve_related_test_case_ids／build_chat_messages 的說明），
+    # 藉此縮減輸入量，不需要使用者手動勾選；沒有待處理問題、或問題沒被完整
+    # 標記關聯用例時，退回原本「送完整清單」的行為，安全優先於省token。
+    scoped_ids = resolve_related_test_case_ids(payload.current_test_cases, pending_questions)
+
     logger.info(
-        "POST /chat project=%s conversation=%s message=%r current_test_cases=%d pending_questions=%d",
+        "POST /chat project=%s conversation=%s message=%r current_test_cases=%d pending_questions=%d "
+        "scoped=%s",
         project_id, conversation_id, final_message, len(payload.current_test_cases), len(pending_questions),
+        len(scoped_ids) if scoped_ids else None,
     )
 
     messages = build_chat_messages(
-        materials, payload.current_test_cases, pending_questions, prior_history, final_message
+        materials, payload.current_test_cases, pending_questions, prior_history, final_message, scoped_ids
     )
 
     def event_stream():
@@ -240,6 +250,33 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
             logger.error("POST /chat conversation=%s 解析失敗: %s", conversation_id, exc)
             yield _sse_event("error", {"detail": str(exc)})
             return
+
+        if scoped_ids and result.needs_full_context:
+            # 模型自己判斷這次訊息牽涉到範圍外的內容，看得到的資訊不夠處理——
+            # 不能相信它在資訊不足下硬給的結果，改用完整清單重新問一次，使用者
+            # 不需要自己察覺、重講一次。
+            logger.info(
+                "POST /chat conversation=%s 縮小範圍後模型回報 needs_full_context，改用完整清單重試",
+                conversation_id,
+            )
+            yield _sse_event("notice", {"detail": "這則回覆需要完整的測試用例清單，正在重新確認…"})
+            full_messages = build_chat_messages(
+                materials, payload.current_test_cases, pending_questions, prior_history, final_message
+            )
+            raw_response = yield from _stream_llm_events(
+                "POST /chat(重試-完整清單)", conversation_id, full_messages
+            )
+            if raw_response is None:
+                return
+            try:
+                result = parse_generation_result(raw_response)
+            except LLMResponseParseError as exc:
+                logger.error("POST /chat conversation=%s 重試後解析失敗: %s", conversation_id, exc)
+                yield _sse_event("error", {"detail": str(exc)})
+                return
+        elif scoped_ids:
+            result = merge_scoped_llm_result(payload.current_test_cases, scoped_ids, result)
+        result.needs_full_context = False
 
         # 鎖定保護要跟 LLM 實際看到的內容用同一份「之前」基準（payload.current_test_cases，
         # 上面 build_chat_messages 也是用這份），不能用 conversation.last_result.test_cases。
