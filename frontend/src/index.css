@@ -1772,7 +1772,15 @@ button.secondary:hover:not(:disabled) {
   margin: 0 -32px;
   padding: 4px 32px 20px;
   position: sticky;
-  top: 0;
+  /* position: sticky 判斷「該不該固定」的基準，是捲動容器（.app-main）自己的
+     padding box，跟這個標題列本身的 margin 完全無關——就算前面把左右 margin
+     拉出去貼齊邊界，垂直方向能貼到的極限還是 .app-main 的 padding-top（24px）
+     那一條線，再上面的 24px 缺口永遠貼不到，一定會露出一小截空隙。這裡不去動
+     共用的 .app-main（會連帶影響專案素材庫那頁的留白，波及範圍太大），而是把
+     sticky 的 top 位移設成 -24px：等於告訴瀏覽器「固定的基準線再往上推 24px」，
+     捲動時標題列會先跟著頁面慢慢往上滑那 24px，貼齊 .app-main 真正的頂端之後
+     才卡住，不多動 .app-main 本身也能讓背景真正頂到最上緣。 */
+  top: -24px;
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-border-soft);
   z-index: 10;
