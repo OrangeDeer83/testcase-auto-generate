@@ -521,17 +521,24 @@ export function WorkspacePage() {
     }
   }
 
-  const handleExport = async () => {
+  // 匯出前擋下未鎖定用例、跟點擊標題列「已鎖定 X/Y 筆」統計時，都是同一個「跳到
+  // 第一筆未鎖定用例」的動作，只是觸發時機不同——抽成共用函式，回傳是否真的有
+  // 跳成功，讓 handleExport 能沿用原本「有未鎖定用例就先跳過去、不繼續匯出」的
+  // 行為，不用兩邊各寫一份一樣的邏輯。
+  const jumpToFirstUnlocked = (): boolean => {
     const firstUnlockedIndex = result.test_cases.findIndex((tc) => !tc.locked)
-    if (firstUnlockedIndex !== -1) {
-      focusTokenRef.current += 1
-      setWorkspaceNotice({
-        message: '⚠️ 有用例未鎖定',
-        focusIndex: firstUnlockedIndex,
-        focusToken: focusTokenRef.current,
-      })
-      return
-    }
+    if (firstUnlockedIndex === -1) return false
+    focusTokenRef.current += 1
+    setWorkspaceNotice({
+      message: '⚠️ 有用例未鎖定',
+      focusIndex: firstUnlockedIndex,
+      focusToken: focusTokenRef.current,
+    })
+    return true
+  }
+
+  const handleExport = async () => {
+    if (jumpToFirstUnlocked()) return
 
     setExporting(true)
     setError(null)
@@ -630,9 +637,16 @@ export function WorkspacePage() {
           onBlur={(e) => commitRename(e.target.value)}
         />
         <span className="subtitle workspace-count">共 {result.test_cases.length} 筆用例</span>
-        <span className={`workspace-lock-progress${allLocked ? ' workspace-lock-progress-complete' : ''}`}>
-          已鎖定 {lockedCount}/{result.test_cases.length} 筆
-        </span>
+        <Tooltip placement="bottom" label={allLocked ? '所有用例都已鎖定' : '點擊跳到第一筆未鎖定的用例'}>
+          <button
+            type="button"
+            className={`workspace-lock-progress${allLocked ? ' workspace-lock-progress-complete' : ''}`}
+            disabled={allLocked}
+            onClick={() => jumpToFirstUnlocked()}
+          >
+            已鎖定 {lockedCount}/{result.test_cases.length} 筆
+          </button>
+        </Tooltip>
         {result.pending_changes.length > 0 && (
           <Tooltip placement="bottom" label="點擊跳到第一筆待確認的建議">
             <button

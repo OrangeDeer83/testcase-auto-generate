@@ -1868,6 +1868,11 @@ button.secondary:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/* 這顆原本是純顯示用的 <span>，改成可以點擊跳到第一筆未鎖定用例的 <button> 之後，
+   會額外吃到全站通用的 button hover／disabled 樣式（見上面 button:hover:not(:disabled)、
+   button:disabled）——那組樣式的 selector 特殊性比這裡的 class 高，不明確蓋掉的話，
+   滑鼠移過去背景色會被換成主色、全部鎖定時又會被 disabled 樣式硬蓋成灰色，跟這裡
+   本來要呈現的「灰底一般 / 綠底表示全部鎖定」兩種語意色不符。 */
 .workspace-lock-progress {
   flex-shrink: 0;
   white-space: nowrap;
@@ -1878,12 +1883,24 @@ button.secondary:hover:not(:disabled) {
   background: var(--color-panel-alt);
   border: 1px solid var(--color-border-soft);
   color: var(--color-text-muted);
+  cursor: pointer;
+  box-shadow: none;
+  transform: none;
 }
 
-.workspace-lock-progress-complete {
+.workspace-lock-progress:hover:not(:disabled) {
+  background: var(--color-panel-alt);
+  box-shadow: none;
+  transform: none;
+  border-color: var(--color-text-faint);
+}
+
+.workspace-lock-progress-complete,
+.workspace-lock-progress-complete:disabled {
   color: #1f7a45;
   border-color: #2f9e5c;
   background: #e3f5e9;
+  cursor: default;
 }
 
 .workspace-pending-badge {
@@ -1899,7 +1916,11 @@ button.secondary:hover:not(:disabled) {
   cursor: pointer;
 }
 
-.workspace-pending-badge:hover {
+/* :not(:disabled) 不是為了語意（這顆按鈕從來不會 disabled），是為了湊夠跟全站
+   通用的 button:hover:not(:disabled) 一樣高的 CSS specificity——單靠
+   .workspace-pending-badge:hover 蓋不過去，滑鼠移過去會被換成全站按鈕預設的
+   深色系 hover 背景，而不是這裡要的淺紫色。 */
+.workspace-pending-badge:hover:not(:disabled) {
   background: #e0e7ff;
 }
 
