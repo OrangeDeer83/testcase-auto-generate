@@ -2492,6 +2492,18 @@ tr.cell-highlight td {
   background: #c0392b;
 }
 
+/* 用例被鎖定時「套用」不能按（見 apply_pending_change 的鎖定檢查）——這裡的
+   選擇器特意跟上面兩條背景色規則寫成同樣的 class 組合＋:disabled，確保
+   specificity 一定比它們高，不管是一般的紫色套用按鈕還是刪除建議的紅色
+   套用按鈕，鎖定後都會確實變成灰色，不會因為 CSS 特殊性算出來的優先順序
+   而讓紅色背景蓋掉全站共用的 button:disabled 灰色樣式。 */
+.case-proposal-apply:disabled,
+.case-proposal-banner-delete .case-proposal-apply:disabled {
+  background: #c3cdd8;
+  color: #4b5563;
+  cursor: not-allowed;
+}
+
 .case-proposal-dismiss {
   background: transparent;
   border-color: currentColor;

@@ -405,6 +405,7 @@ export function TestCaseTable({
                 <button
                   type="button"
                   className="case-proposal-apply"
+                  disabled={locked}
                   onClick={(e) => {
                     e.stopPropagation()
                     onApplyPendingChange?.(pendingChange.id)
