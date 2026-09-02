@@ -104,3 +104,61 @@ def enforce_lock_on_llm_result(
         test_cases=final_cases,
         clarification_questions=result.clarification_questions + extra_questions,
     )
+
+
+def resolve_related_test_case_ids(
+    current_test_cases: list[TestCase], pending_questions: list[ClarificationQuestion]
+) -> set[str] | None:
+    """把「目前尚未解決的澄清問題」自己標記的 related_test_case_names（模型上一輪
+    自己填的，見 prompt_builder 的 SYSTEM_PROMPT/SYSTEM_PROMPT_CHAT 規則）解析成
+    這一輪自動縮小範圍要用的用例 id 集合。用名稱比對而不是直接要模型記 id，是因為
+    用例剛建立的當下模型根本還沒看過後端指派的 id（同一輪回應裡新用例跟提到它的
+    問題是一起產生的），只有名稱是模型當下就知道、記得住的（跟 enforce_lock_on_
+    llm_result 的名稱比對 fallback 同樣考量）。
+
+    任何一個待處理問題沒有標記 related_test_case_names，或标记的名稱一個都對不到
+    現有用例，就整個放棄自動縮小範圍、回傳 None（呼叫端會退回送完整清單）——
+    漏標的代價是「這次沒能正確縮小範圍」，比「誤判縮小、導致使用者的回覆送到
+    模型手上時看不到真正需要的用例內容」安全得多。"""
+    if not pending_questions:
+        return None
+    by_name = {tc.name: tc.id for tc in current_test_cases}
+    ids: set[str] = set()
+    for question in pending_questions:
+        if not question.related_test_case_names:
+            return None
+        for name in question.related_test_case_names:
+            tc_id = by_name.get(name)
+            if tc_id:
+                ids.add(tc_id)
+    return ids or None
+
+
+def merge_scoped_llm_result(
+    previous: list[TestCase], scoped_ids: set[str], result: GenerationResult
+) -> GenerationResult:
+    """自動縮小範圍送出的聊天請求，LLM 只看得到 `scoped_ids` 這些用例，回傳的
+    test_cases 陣列也只包含這些用例——這裡把它跟範圍外、原封不動的舊用例合併回
+    一份完整清單，範圍外的用例一律保持原樣（LLM 看不到內容，本來就不可能正確
+    修改它們，呼叫端不應該相信它回傳的任何範圍外內容）。"""
+    previous_ids = {tc.id for tc in previous}
+    llm_by_id = {tc.id: tc for tc in result.test_cases}
+
+    merged: list[TestCase] = []
+    for tc in previous:
+        if tc.id not in scoped_ids:
+            merged.append(tc)
+            continue
+        replacement = llm_by_id.get(tc.id)
+        if replacement is not None:
+            merged.append(replacement)
+        # 範圍內、LLM 沒有回傳對應 id → 視為刪除，不加入 merged
+
+    for tc in result.test_cases:
+        if tc.id not in previous_ids:
+            merged.append(tc)
+
+    return GenerationResult(
+        test_cases=merged,
+        clarification_questions=result.clarification_questions,
+    )

@@ -1,7 +1,28 @@
 import json
 
 from app.models.material import ParsedMaterial
-from app.services.prompt_builder import build_material_content, parse_generation_result, resolve_image_numbers
+from app.models.test_case import TestCase, TestStep
+from app.services.prompt_builder import (
+    build_chat_messages,
+    build_material_content,
+    parse_generation_result,
+    resolve_image_numbers,
+)
+
+
+def _tc(name: str, locked: bool = False) -> TestCase:
+    return TestCase(
+        name=name,
+        steps=[TestStep(step_no=1, description="點擊登入按鈕", expected_result="導向首頁")],
+        priority="P1",
+        locked=locked,
+    )
+
+
+def _user_text_blocks(messages: list[dict]) -> str:
+    return "\n".join(
+        block["text"] for block in messages[1]["content"] if block.get("type") == "text"
+    )
 
 
 def test_single_image_material_has_no_group_hint_but_is_still_numbered() -> None:
@@ -177,3 +198,78 @@ def test_parse_generation_result_drops_reconfirmation_loop_questions() -> None:
     result = parse_generation_result(raw)
 
     assert [q.id for q in result.clarification_questions] == ["q5_still_open"]
+
+
+def test_parse_generation_result_reads_related_names_and_needs_full_context() -> None:
+    raw = json.dumps(
+        {
+            "test_cases": [],
+            "clarification_questions": [
+                {
+                    "id": "q1",
+                    "question": "邊界值是多少？",
+                    "context": "",
+                    "related_test_case_names": ["用例A", "用例B"],
+                }
+            ],
+            "needs_full_context": True,
+        }
+    )
+
+    result = parse_generation_result(raw)
+
+    assert result.clarification_questions[0].related_test_case_names == ["用例A", "用例B"]
+    assert result.needs_full_context is True
+
+
+def test_parse_generation_result_defaults_related_names_and_needs_full_context() -> None:
+    """舊格式（沒有這兩個新欄位）的回應也要能正常解析，預設值要安全（空清單、false），
+    不能因為模型這次沒填就整個解析失敗。"""
+    raw = json.dumps(
+        {
+            "test_cases": [],
+            "clarification_questions": [{"id": "q1", "question": "邊界值是多少？"}],
+        }
+    )
+
+    result = parse_generation_result(raw)
+
+    assert result.clarification_questions[0].related_test_case_names == []
+    assert result.needs_full_context is False
+
+
+def test_build_chat_messages_without_scope_sends_full_list() -> None:
+    cases = [_tc("用例A"), _tc("用例B")]
+
+    messages = build_chat_messages([], cases, [], [], "訊息")
+
+    other_block = _user_text_blocks(messages)
+    assert "目前的測試用例清單（JSON）" in other_block
+    assert "點擊登入按鈕" in other_block
+
+
+def test_build_chat_messages_with_scope_only_sends_full_content_for_selected() -> None:
+    selected = _tc("用例A")
+    other = _tc("用例B")
+
+    messages = build_chat_messages([], [selected, other], [], [], "訊息", {selected.id})
+
+    text = _user_text_blocks(messages)
+    assert "本次範圍" in text
+    assert text.count("點擊登入按鈕") == 1  # 只有範圍內的用例帶完整步驟內容
+    assert "用例A" in text
+    assert "用例B" in text  # 範圍外的用例仍要列出名稱
+
+
+def test_build_chat_messages_with_scope_locked_list_excludes_out_of_scope() -> None:
+    selected_locked = _tc("用例A", locked=True)
+    other_locked = _tc("用例B", locked=True)
+
+    messages = build_chat_messages(
+        [], [selected_locked, other_locked], [], [], "訊息", {selected_locked.id}
+    )
+
+    text = _user_text_blocks(messages)
+    lock_section = text.split("已鎖定審核")[1]
+    assert "用例A" in lock_section
+    assert "用例B" not in lock_section

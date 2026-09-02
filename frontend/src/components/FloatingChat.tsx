@@ -14,6 +14,9 @@ interface FloatingChatProps {
   /** 模型串流輸出時，目前已經抓到的「正在寫哪個用例／問題」清單，依序顯示在
    * 「思考中」下面，讓使用者能看到模型正在做什麼，不只是一個乾等的計時器。 */
   streamingLines: StreamProgressLine[]
+  /** 自動縮小範圍後，模型發現資訊不夠、後端正在用完整清單重新問一次時的過程
+   * 說明；null 代表目前沒有這回事。 */
+  retryNotice: string | null
   onSend: (message: string, file?: File) => void
   materials: UploadedMaterial[]
   selectedMaterialIds: string[]
@@ -37,6 +40,7 @@ export function FloatingChat({
   busy,
   busyStartedAt,
   streamingLines,
+  retryNotice,
   onSend,
   materials,
   selectedMaterialIds,
@@ -135,6 +139,7 @@ export function FloatingChat({
           busy={busy}
           busyStartedAt={busyStartedAt}
           streamingLines={streamingLines}
+          retryNotice={retryNotice}
           onSend={onSend}
           materials={materials}
           selectedMaterialIds={selectedMaterialIds}

@@ -77,11 +77,14 @@ function parseSseEvent(raw: string): SseEvent {
  * 產生的文字片段）跟最後一個 `result`（完整處理過、可以直接當結果用的
  * GenerationResult），失敗時送 `error`。`onDelta` 讓呼叫端可以即時把片段顯示
  * 給使用者看（見 materialRisk 的姊妹檔 streamProgress.ts），不需要串流的呼叫端
- * 可以不傳。 */
+ * 可以不傳。`onNotice` 對應後端「自動縮小範圍後發現資訊不夠、正在用完整清單
+ * 重新問一次」時送出的 `notice` 事件——這不是錯誤，是一個過程說明，重新開始
+ * 的那次呼叫會有自己全新一批 `delta`，呼叫端應該把先前累積的片段清掉重算。 */
 async function streamGenerationResult(
   url: string,
   init: RequestInit,
   onDelta?: (text: string) => void,
+  onNotice?: (text: string) => void,
 ): Promise<GenerationResult> {
   const response = await fetch(url, init)
   if (!response.ok) {
@@ -91,6 +94,8 @@ async function streamGenerationResult(
   for await (const evt of readSseEvents(response)) {
     if (evt.event === 'delta') {
       onDelta?.(evt.data.text)
+    } else if (evt.event === 'notice') {
+      onNotice?.(evt.data.detail)
     } else if (evt.event === 'result') {
       result = evt.data
     } else if (evt.event === 'error') {
@@ -377,6 +382,7 @@ export async function sendChatMessage(
   currentTestCases: TestCase[],
   attachmentMaterialId?: string,
   onDelta?: (text: string) => void,
+  onNotice?: (text: string) => void,
 ): Promise<GenerationResult> {
   return streamGenerationResult(
     `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/chat`,
@@ -390,6 +396,7 @@ export async function sendChatMessage(
       }),
     },
     onDelta,
+    onNotice,
   )
 }
 

@@ -24,6 +24,9 @@ interface ChatPanelProps {
   /** 模型串流輸出時，目前已經抓到的「正在寫哪個用例／問題」清單，依序顯示在
    * 「思考中」下面。 */
   streamingLines: StreamProgressLine[]
+  /** 自動縮小範圍後，模型發現資訊不夠、後端正在用完整清單重新問一次時的過程
+   * 說明；null 代表目前沒有這回事。 */
+  retryNotice: string | null
   onSend: (message: string, file?: File) => void
   materials: UploadedMaterial[]
   selectedMaterialIds: string[]
@@ -46,6 +49,7 @@ export function ChatPanel({
   busy,
   busyStartedAt,
   streamingLines,
+  retryNotice,
   onSend,
   materials,
   selectedMaterialIds,
@@ -98,7 +102,7 @@ export function ChatPanel({
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ block: 'end' })
-  }, [log, busy, streamingLines])
+  }, [log, busy, streamingLines, retryNotice])
 
   useEffect(() => {
     if (!busyStartedAt) {
@@ -219,6 +223,7 @@ export function ChatPanel({
           <div className="chat-entry entry-assistant">
             <div className="chat-bubble question">
               思考中…{elapsedSeconds > 0 ? `（已等待 ${elapsedSeconds} 秒）` : ''}
+              {retryNotice && <div className="chat-stream-notice">🔄 {retryNotice}</div>}
               {streamingLines.length > 0 && (
                 <ul className="chat-stream-progress">
                   {streamingLines.map((line, idx) => (

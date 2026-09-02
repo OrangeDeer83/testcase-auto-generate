@@ -1671,6 +1671,13 @@ button.secondary:hover:not(:disabled) {
 
 /* 模型串流輸出時即時抓到的「正在寫哪個用例／問題」清單，跟著「思考中」一起
    顯示，讓使用者看到具體正在產生的內容，不只是一個乾等的計時器。 */
+.chat-stream-notice {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 .chat-stream-progress {
   margin: 6px 0 0;
   padding: 0;
