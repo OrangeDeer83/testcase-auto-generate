@@ -633,6 +633,17 @@ export function WorkspacePage() {
         <span className={`workspace-lock-progress${allLocked ? ' workspace-lock-progress-complete' : ''}`}>
           已鎖定 {lockedCount}/{result.test_cases.length} 筆
         </span>
+        {result.pending_changes.length > 0 && (
+          <Tooltip placement="bottom" label="點擊跳到第一筆待確認的建議">
+            <button
+              type="button"
+              className="workspace-pending-badge"
+              onClick={() => scrollToFirstPendingChange(result.test_cases, result.pending_changes)}
+            >
+              AI 建議 {result.pending_changes.length} 項
+            </button>
+          </Tooltip>
+        )}
         {hasDuplicateTab && (
           <Tooltip
             placement="bottom"
