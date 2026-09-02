@@ -572,7 +572,7 @@ export function WorkspacePage() {
 
   if (!hasResult) {
     return (
-      <div className="panel">
+      <div className="workspace-view">
         <div className="workspace-title-row">
           <input
             className="workspace-title-input"
@@ -590,27 +590,29 @@ export function WorkspacePage() {
             </Tooltip>
           )}
         </div>
-        <h2>選擇要使用的素材</h2>
-        <p className="subtitle">
-          這個對話會把勾選的素材送給模型參考——專案裡新增的素材不會自動加進來，避免每次都把不相關的東西一起送給模型。
-        </p>
-        <MaterialSelector
-          materials={materials}
-          selectedIds={selectedMaterialIds}
-          busy={busy}
-          onChange={handleSelectedMaterialsChange}
-          onUpdateMaterial={handleUpdateMaterial}
-          onAddFiles={handleAddFilesToSelector}
-          onAddText={handleAddTextToSelector}
-          onRemoveMaterial={handleRemoveMaterial}
-          onMergeMaterials={handleMergeMaterials}
-          onUngroupImage={handleUngroupImage}
-        />
-        <div className="toolbar">
-          <span className="subtitle">已選擇 {selectedMaterialIds.length} 項素材</span>
-          <button disabled={busy || selectedMaterialIds.length === 0} onClick={handleGenerate}>
-            {busy ? '產生中…' : '開始產生測試用例'}
-          </button>
+        <div className="panel">
+          <h2>選擇要使用的素材</h2>
+          <p className="subtitle">
+            這個對話會把勾選的素材送給模型參考——專案裡新增的素材不會自動加進來，避免每次都把不相關的東西一起送給模型。
+          </p>
+          <MaterialSelector
+            materials={materials}
+            selectedIds={selectedMaterialIds}
+            busy={busy}
+            onChange={handleSelectedMaterialsChange}
+            onUpdateMaterial={handleUpdateMaterial}
+            onAddFiles={handleAddFilesToSelector}
+            onAddText={handleAddTextToSelector}
+            onRemoveMaterial={handleRemoveMaterial}
+            onMergeMaterials={handleMergeMaterials}
+            onUngroupImage={handleUngroupImage}
+          />
+          <div className="toolbar">
+            <span className="subtitle">已選擇 {selectedMaterialIds.length} 項素材</span>
+            <button disabled={busy || selectedMaterialIds.length === 0} onClick={handleGenerate}>
+              {busy ? '產生中…' : '開始產生測試用例'}
+            </button>
+          </div>
         </div>
       </div>
     )
