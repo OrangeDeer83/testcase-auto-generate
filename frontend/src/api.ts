@@ -400,6 +400,32 @@ export async function sendChatMessage(
   )
 }
 
+/** 使用者在畫面上點「套用」——把某一筆 AI 建議的變更真的寫進正式的用例清單。 */
+export async function applyPendingChange(
+  projectId: string,
+  conversationId: string,
+  changeId: string,
+): Promise<GenerationResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/pending-changes/${changeId}/apply`,
+    { method: 'POST' },
+  )
+  return handleResponse(response)
+}
+
+/** 使用者在畫面上點「忽略」——不套用這筆建議，正式的用例內容維持原樣。 */
+export async function dismissPendingChange(
+  projectId: string,
+  conversationId: string,
+  changeId: string,
+): Promise<GenerationResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/pending-changes/${changeId}/dismiss`,
+    { method: 'POST' },
+  )
+  return handleResponse(response)
+}
+
 export async function updateTestCases(
   projectId: string,
   conversationId: string,

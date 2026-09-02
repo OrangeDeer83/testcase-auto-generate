@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.logging_config import logger
 from app.models.conversation import ChatEntry, Conversation, ConversationSummary
 from app.models.material import ImageRef
-from app.models.test_case import ChatMessage, GenerationResult, TestCase
+from app.models.test_case import ChatMessage, GenerationResult, PendingChange, TestCase
 from app.services import conversation_store, project_store
 from app.services.llm_client import stream_chat_completion
 from app.services.prompt_builder import (
@@ -19,10 +19,16 @@ from app.services.prompt_builder import (
     resolve_image_numbers,
 )
 from app.services.test_case_lock import (
+    LockedCaseConflictError,
+    PendingChangeNotFoundError,
     VersionConflictError,
+    apply_pending_change,
     check_result_version,
+    compute_pending_changes,
+    dismiss_pending_change,
     enforce_lock_on_llm_result,
     enforce_lock_on_manual_edit,
+    merge_pending_changes,
     merge_scoped_llm_result,
     resolve_related_test_case_ids,
 )
@@ -287,24 +293,45 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
         previous_cases = payload.current_test_cases
         previous_version = conversation.last_result.result_version if conversation.last_result else 0
         result = enforce_lock_on_llm_result(previous_cases, result)
-        result.result_version = previous_version + 1
-        conversation.last_result = result
+
+        # 聊天式編輯不再直接覆蓋正式的 test_cases——AI 提出的變動先包成待確認的
+        # PendingChange，使用者要在畫面上個別點「套用」才會真的生效（見
+        # test_case_lock.py 的 compute_pending_changes／apply_pending_change）。
+        # 正式的 test_cases 維持 previous_cases 不變，version 也不用跟著動；
+        # 只有 clarification_questions 是對話性質、不是資料異動，照樣立刻更新，
+        # 下一輪自動縮小範圍（resolve_related_test_case_ids）才看得到最新的
+        # 待處理問題清單。
+        new_pending = compute_pending_changes(previous_cases, result.test_cases)
+        existing_pending = conversation.last_result.pending_changes if conversation.last_result else []
+        merged_pending = merge_pending_changes(existing_pending, new_pending)
+
+        committed_result = GenerationResult(
+            test_cases=previous_cases,
+            clarification_questions=result.clarification_questions,
+            result_version=previous_version,
+            pending_changes=merged_pending,
+        )
+        conversation.last_result = committed_result
         conversation.llm_history.append(ChatMessage(role="user", content=final_message))
         conversation.llm_history.append(
-            ChatMessage(role="assistant", content=_summarize_for_history(result))
+            ChatMessage(role="assistant", content=_summarize_for_history(committed_result, new_pending))
         )
         conversation_store.save_conversation(project_id, conversation)
         logger.info(
-            "POST /chat conversation=%s 結果: test_cases=%d questions=%d",
-            conversation_id, len(result.test_cases), len(result.clarification_questions),
+            "POST /chat conversation=%s 結果: test_cases=%d questions=%d pending_changes=%d(+%d)",
+            conversation_id, len(committed_result.test_cases), len(committed_result.clarification_questions),
+            len(committed_result.pending_changes), len(new_pending),
         )
-        yield _sse_event("result", result.model_dump())
+        yield _sse_event("result", committed_result.model_dump())
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-def _summarize_for_history(result: GenerationResult) -> str:
-    parts = [f"已更新測試用例，目前共 {len(result.test_cases)} 筆。"]
+def _summarize_for_history(result: GenerationResult, new_pending: list[PendingChange]) -> str:
+    if new_pending:
+        parts = [f"提出了 {len(new_pending)} 項用例調整建議，等待使用者在畫面上確認套用。"]
+    else:
+        parts = ["這次沒有提出用例調整建議。"]
     if result.clarification_questions:
         questions = "；".join(q.question for q in result.clarification_questions)
         parts.append(f"仍有 {len(result.clarification_questions)} 個待釐清問題：{questions}")
@@ -329,6 +356,54 @@ def update_test_cases(project_id: str, conversation_id: str, payload: Generation
     conversation.last_result = payload
     conversation_store.save_conversation(project_id, conversation)
     return payload
+
+
+@router.post("/{conversation_id}/pending-changes/{change_id}/apply", response_model=GenerationResult)
+def apply_pending_change_endpoint(project_id: str, conversation_id: str, change_id: str):
+    """使用者在畫面上點「套用」——把某一筆 AI 建議的變更真的寫進正式的
+    test_cases 清單，見 compute_pending_changes／apply_pending_change 的說明。"""
+    _get_project_or_404(project_id)
+    conversation = _get_conversation_or_404(project_id, conversation_id)
+    if conversation.last_result is None:
+        raise HTTPException(status_code=404, detail="這個對話還沒有任何待確認的建議")
+
+    previous_version = conversation.last_result.result_version
+    try:
+        test_cases, remaining = apply_pending_change(
+            conversation.last_result.test_cases, conversation.last_result.pending_changes, change_id
+        )
+    except PendingChangeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="這筆建議不存在或已經被處理過") from exc
+    except LockedCaseConflictError as exc:
+        raise HTTPException(
+            status_code=409, detail="這筆用例已經被鎖定審核，無法套用建議，請先解鎖再處理"
+        ) from exc
+
+    updated_result = conversation.last_result.model_copy(
+        update={"test_cases": test_cases, "pending_changes": remaining, "result_version": previous_version + 1}
+    )
+    conversation.last_result = updated_result
+    conversation_store.save_conversation(project_id, conversation)
+    return updated_result
+
+
+@router.post("/{conversation_id}/pending-changes/{change_id}/dismiss", response_model=GenerationResult)
+def dismiss_pending_change_endpoint(project_id: str, conversation_id: str, change_id: str):
+    """使用者在畫面上點「忽略」——不套用這筆建議，正式的用例內容維持原樣。"""
+    _get_project_or_404(project_id)
+    conversation = _get_conversation_or_404(project_id, conversation_id)
+    if conversation.last_result is None:
+        raise HTTPException(status_code=404, detail="這個對話還沒有任何待確認的建議")
+
+    try:
+        remaining = dismiss_pending_change(conversation.last_result.pending_changes, change_id)
+    except PendingChangeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="這筆建議不存在或已經被處理過") from exc
+
+    updated_result = conversation.last_result.model_copy(update={"pending_changes": remaining})
+    conversation.last_result = updated_result
+    conversation_store.save_conversation(project_id, conversation)
+    return updated_result
 
 
 class ChatLogPayload(BaseModel):

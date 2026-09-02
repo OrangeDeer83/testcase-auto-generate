@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { diffTestCases, getChangedCellKeys, getPreviousValues } from './diffTestCases'
+import {
+  describeCaseFieldChanges,
+  diffTestCases,
+  getChangedCellKeys,
+  getPreviousValues,
+  getProposedFieldValues,
+} from './diffTestCases'
 import type { TestCase } from './types'
 
 function makeCase(overrides: Partial<TestCase> = {}): TestCase {
@@ -147,5 +153,77 @@ describe('getPreviousValues', () => {
     const values = getPreviousValues([], [makeCase()])
 
     expect(values.size).toBe(0)
+  })
+})
+
+describe('describeCaseFieldChanges', () => {
+  it('回傳空陣列當內容完全一樣', () => {
+    const tc = makeCase()
+
+    expect(describeCaseFieldChanges(tc, tc)).toEqual([])
+  })
+
+  it('偵測改名，即使是同一筆用例（用 id 配對，不靠名稱）', () => {
+    const before = makeCase({ name: '舊名稱' })
+    const after = makeCase({ ...before, name: '新名稱' })
+
+    const changes = describeCaseFieldChanges(before, after)
+
+    expect(changes).toContain('名稱從「舊名稱」改成「新名稱」')
+  })
+
+  it('偵測優先級變更', () => {
+    const before = makeCase({ priority: 'P0' })
+    const after = makeCase({ ...before, priority: 'P1' })
+
+    expect(describeCaseFieldChanges(before, after)).toContain('優先級從 P0 改成 P1')
+  })
+})
+
+describe('getProposedFieldValues', () => {
+  it('回傳空 Map 當內容完全一樣', () => {
+    const tc = makeCase()
+
+    expect(getProposedFieldValues(tc, tc).size).toBe(0)
+  })
+
+  it('回傳有變動欄位的建議新值', () => {
+    const current = makeCase({ priority: 'P0', notes: '' })
+    const proposed = makeCase({ ...current, priority: 'P1', notes: '補充說明' })
+
+    const values = getProposedFieldValues(current, proposed)
+
+    expect(values.get('priority')).toBe('P1')
+    expect(values.get('notes')).toBe('補充說明')
+    expect(values.has('module')).toBe(false)
+  })
+
+  it('回傳有變動步驟的建議新值', () => {
+    const current = makeCase()
+    const proposed = makeCase({
+      ...current,
+      steps: [
+        current.steps[0],
+        { step_no: 2, description: '點擊新版登入按鈕', expected_result: '導向首頁' },
+      ],
+    })
+
+    const values = getProposedFieldValues(current, proposed)
+
+    expect(values.get('step:1:description')).toBe('點擊新版登入按鈕')
+    expect(values.has('step:0:description')).toBe(false)
+  })
+
+  it('新增的步驟也回傳建議新值', () => {
+    const current = makeCase({ steps: [makeCase().steps[0]] })
+    const proposed = makeCase({
+      ...current,
+      steps: [...current.steps, { step_no: 2, description: '新步驟', expected_result: '新結果' }],
+    })
+
+    const values = getProposedFieldValues(current, proposed)
+
+    expect(values.get('step:1:description')).toBe('新步驟')
+    expect(values.get('step:1:expected_result')).toBe('新結果')
   })
 })

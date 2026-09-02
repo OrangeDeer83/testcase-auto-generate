@@ -2,6 +2,36 @@
 
 > 記錄每次修 bug／改善 UX 時「為什麼壞掉、怎麼修好的、背後用到什麼可以遷移到其他情境的觀念」，主要是寫給使用者看的學習筆記，也順便讓之後回頭查、或下一個接手的 Claude 不用重新翻一次 diff 才搞懂修法。跟 [PROGRESS.md](PROGRESS.md) 的差異：PROGRESS.md 是變更歷史總覽（做了什麼），這份專注在單一問題的根因、修法、與原理本身。維護方式見 `.claude/skills/fix-notes/SKILL.md`。
 
+## 2026-09-02 開新對話、還沒產生用例時，標題列沒有貼齊卡片邊緣
+
+**問題**：使用者回報開新對話、還沒選素材產生用例的「選擇要使用的素材」畫面，上方標題列（對話名稱那一條）跟下面卡片的邊緣沒有完全貼齊，四個角落看得出一小段沒對齊、露出底色的縫隙，看起來像兩塊拼接歪掉的區塊。
+
+**修法**：根因是 `.workspace-title-row` 這個標題列的樣式，是用「負 margin 把自己拉到跟 `.app-main` 的內距（24px／32px）齊平」這個技巧做出貼齊視窗邊緣的橫幅效果（見同一個檔案裡更早的註解說明）——但這個計算是假設 `.workspace-title-row` 直接是 `.app-main` 的子元素。「選擇要使用的素材」這個畫面（`WorkspacePage.tsx` 的 `!hasResult` 分支）卻把標題列包在 `.panel` 卡片裡面，`.panel` 自己有一組不同的內距（22px／26px）跟邊框、圓角、陰影，兩邊的內距數字對不上，負 margin 的算法就跟著跑掉，貼齊的效果失準，四個角落露出沒被背景蓋到的縫隙。已經套用結果、有測試用例的主畫面（同一個元件的另一個分支）沒有這個問題，因為那邊的標題列是直接放在沒有額外內距的 `.workspace-view` 裡，負 margin 的假設成立。修法不是去調整負 margin 的數字硬湊出正確位置（湊出來的數字換一個內距设定又會歪掉），而是讓兩個分支用同一種父層結構：把標題列從 `.panel` 卡片裡搬出來，改成跟 `.panel` 平行放在 `.workspace-view` 底下——這樣兩個分支的 `.workspace-title-row` 都符合它原本的假設（父層沒有額外內距），不用改標題列本身的任何樣式數字。
+
+**背後的通用觀念**：**用負 margin／絕對定位把一個元素「拉出」父層的內距、貼齊更外層容器邊緣，這種技巧本質上是在元素與某個特定祖先層級之間建立一份隱性契約**——契約的內容是「父層的內距是固定的某個數字」，程式碼本身完全看不出這份契約，只有寫這段 CSS 的人（透過註解，或記在腦子裡）知道。這份契約只要被違反——像這次把同一個元件套進一個內距不同的容器——效果就會不動聲色地跑掉，而且不會出現任何錯誤或警告，只會在畫面上留下一段難以第一眼看出原因的縫隙。這類「用數字硬算出來貼齊」的樣式，比較安全的做法是要嘛把假設寫成清楚的註解並且每個使用的地方都驗證過，要嘛（像這次的修法）乾脆讓每個使用情境都符合同一份結構假設，不要讓同一段樣式規則被套用在假設不成立的父層底下。
+
+**檔案**：`frontend/src/pages/WorkspacePage.tsx`（「選擇要使用的素材」畫面的 JSX 結構調整，`.workspace-title-row` 改成 `.workspace-view` 的直接子元素，`.panel` 卡片只包住素材選取跟產生按鈕的部分）。
+
+**驗證方式**：`npx tsc --noEmit`、`npx vitest run`（38 個測試全過，這個修法本身是純版面調整，沒有新增邏輯需要測試）。瀏覽器實測（dev 環境 18002/5175，新建一個可刪除的測試專案，測完已刪除）：開一個新對話、進入「選擇要使用的素材」畫面，確認標題列背景完整延伸到卡片四個邊緣，跟下面的白色卡片之間沒有露出縫隙；也重新檢查了已經有用例的主畫面（另一個分支），確認沒有被這次的結構調整波及，標題列一樣正常貼齊。
+
+## 2026-09-01 聊天式編輯改成「AI 建議、人工確認套用」，不再自動覆蓋用例內容
+
+**問題**：使用者反思整個對話助手的可控性，討論到「與其想辦法讓 AI 更聽話，不如讓真正的資料異動先經過人工確認再生效」——原本的設計是聊天訊息一送出，AI 回傳的內容就直接覆蓋整份 `test_cases`（靠 `enforce_lock_on_llm_result` 事後保護鎖定用例、靠前端的 `diffTestCases` 事後標黃提示哪裡變了），錯誤或不如預期的修改要等使用者看到結果才能發現，且已經是既成事實，得再花一次來回請 AI 改回去。
+
+**修法**：把「AI 提出的內容」跟「畫面上正式生效的內容」拆成兩份狀態：
+
+1. 後端新增 `PendingChange`（`backend/app/models/test_case.py`）：`{id, action: "add"|"update"|"delete", data}`。`/chat` 收到 AI 回應後，不再直接把 `test_cases` 換掉，而是用新函式 `compute_pending_changes`（`test_case_lock.py`）拿「AI 這次的完整回應」跟「目前正式生效的內容」用 **id** 比對（不是名稱——原因跟這個專案已經踩過的鎖定用例改名 bug 一樣：AI 可能連名稱一起改，名稱比對會誤判成刪除+新增），算出真正有差異的部分，包成一筆一筆待確認的建議。正式的 `test_cases` 維持原樣不動，`result_version` 也不跟著變——這代表這次聊天呼叫**沒有任何資料真的被改動**，純粹是多了幾筆建議。
+2. 使用者要到畫面上的用例卡片，針對每一筆建議個別點「套用」或「忽略」（新增/刪除/修改動作分別對應「新增此用例」「確認刪除」「套用」，忽略統一是「忽略」/「保留」），才會透過新的 `POST .../pending-changes/{id}/apply`／`.../dismiss` 兩個 endpoint 真正寫進正式清單。套用當下才做的鎖定檢查（`LockedCaseConflictError`）是必要的第二道防線：建議提出的當下這筆用例可能還沒被鎖，但使用者按套用之前，另一個分頁把它鎖定了，不能只信任建議產生當時的狀態。
+3. 使用者可以同時累積好幾筆不同用例的待處理建議（先不理上一輪的建議、繼續往下聊），用 `merge_pending_changes` 處理；但同一筆用例只保留「最新一輪」的建議，不會疊加成兩筆互相衝突的項目。
+4. 只有初次「產生測試用例」（`/generate`）維持原本直接寫入的行為——這是刻意的範圍限制，不是遺漏：初次產生沒有「之前的內容」可以比較，全部套用建議清單化只會變成「按 N 次套用才看得到自己剛產生的用例」，體驗更差。
+5. 前端 `TestCaseTable.tsx` 針對每筆有待確認建議的用例，在卡片頂端顯示提示 banner（新增/修改用藍色，刪除用紅色）與套用/忽略按鈕；修改類的建議還會在對應欄位下方多顯示一行「AI 建議：...」（跟既有「原本：...」的灰字比對是同一種視覺語言，方便直接對照）；新增類的建議因為對應的用例還不存在於清單裡，另外用一張虛線邊框的卡片呈現在列表最下方。
+
+**背後的通用觀念**：**「讓 AI 更準確」跟「讓 AI 的輸出不能未經確認就影響到正式資料」是兩種互補、但本質不同的可靠性策略**——前者持續改善 prompt、加驗證規則，永遠有改不完的邊界情況；後者直接改變資料流的形狀，把「AI 的輸出」跟「系統的正式狀態」中間插入一個人工關卡，不管 AI 這次表現得多好或多差，錯誤的影響範圍都被鎖在「使用者還沒點套用」這個安全的中介狀態裡，沒有辦法繞過去。這是很多需要「自動化 + 高風險資料變更」場景（不只是 AI，任何自動化批次處理、資料匯入都適用）的共通設計模式：**區分「產生建議」跟「套用建議」兩個階段，並且讓兩者之間必須經過一個明確、使用者可以拒絕的關卡**，比起單純追求「產生建議的那一步不要出錯」更根本地解決了「出錯的代價」這件事。
+
+**檔案**：`backend/app/models/test_case.py`（新增 `PendingChange`，`GenerationResult` 新增 `pending_changes`）、`backend/app/services/test_case_lock.py`（新增 `compute_pending_changes`／`merge_pending_changes`／`apply_pending_change`／`dismiss_pending_change`）、`backend/app/routers/conversations.py`（`/chat` 改成建立待確認建議而非直接覆蓋，新增 `pending-changes/{id}/apply`／`dismiss` 兩個 endpoint）；前端 `frontend/src/types.ts`（新增 `PendingChange`，`GenerationResult` 新增 `pending_changes`）、`frontend/src/api.ts`（新增 `applyPendingChange`／`dismissPendingChange`）、`frontend/src/diffTestCases.ts`（新增 `describeCaseFieldChanges`／`getProposedFieldValues`，用 id 比對單一已知配對的用例，不靠名稱猜）、`frontend/src/components/TestCaseTable.tsx`（新增建議 banner／套用忽略按鈕／新增建議卡片）、`frontend/src/pages/WorkspacePage.tsx`（移除聊天後「直接比對 test_cases 前後差異」的邏輯，改成依 `pending_changes` 產生摘要訊息與捲動定位）、`frontend/src/index.css`（新增 `.case-proposal-*`／`.proposed-value` 樣式）。
+
+**驗證方式**：`.venv/Scripts/python.exe -m pytest`（後端 82 個測試全過，新增 `compute_pending_changes`／`merge_pending_changes`／`apply_pending_change`／`dismiss_pending_change` 的完整測試，含「同一筆用例新建議蓋掉舊建議」「套用當下才發現已鎖定」等情境）、`npx tsc --noEmit`、`npx vitest run`（前端 45 個測試全過，新增 `describeCaseFieldChanges`／`getProposedFieldValues` 測試）。瀏覽器實測（dev 環境 18002/5175，真實 LLM，測完已刪除測試用專案）：產生 6 筆用例後，一次訊息請 AI 同時做三件事（改一筆優先級、新增一筆、刪除一筆），確認畫面上分別出現藍色「修改」banner（帶「AI 建議：P1」的欄位提示）、紅色「刪除」banner、虛線邊框的「新增」建議卡片，且用例總數在套用前維持原本的 6 筆不變；分別點擊三個「套用／確認刪除／新增此用例」按鈕後，確認網路請求都正確打到 `pending-changes/.../apply`、畫面即時反映（優先級變成 P1、被刪除的用例消失、新用例加入清單、總數回到 6 筆），且過程中原本 5 個未回答的澄清問題全程正確保留、沒有被誤判成已解決。
+
 ## 2026-09-01 回覆澄清問題時，自動只把相關用例送給模型，不用手動勾選
 
 **問題**：使用者原本的訴求是「想減少呼叫模型時的輸入量」，第一版做法（PR #37）是加一個「選取用例提問」的手動勾選 UI：使用者自己勾幾筆用例、按「針對已選提問」，才會縮小這次送給模型的內容範圍。做完之後使用者才澄清方向錯了：他要的不是「自己去針對某些用例主動提問」，而是「當**助手**主動提出澄清問題、我在聊天欄裡正常打字回覆時**，不要因為這樣就自動把全部用例的完整內容都送進去**」——這是完全不同的兩個情境：前者是使用者主動縮小範圍，後者是系統該自己判斷「這次回覆其實只跟其中幾筆用例有關」，使用者根本不應該要手動做任何事。
@@ -17,7 +47,6 @@
 **檔案**：`backend/app/models/test_case.py`（`ClarificationQuestion` 新增 `related_test_case_names`，`GenerationResult` 新增 `needs_full_context`）、`backend/app/services/prompt_builder.py`（`SYSTEM_PROMPT`／`SYSTEM_PROMPT_CHAT` 新增標記關聯用例與 `needs_full_context` 的規則，`build_chat_messages` 重新加入 `scoped_ids` 參數）、`backend/app/services/test_case_lock.py`（新增 `resolve_related_test_case_ids`、`merge_scoped_llm_result`）、`backend/app/routers/conversations.py`（`/chat` 自動計算 `scoped_ids`，收到 `needs_full_context` 時改用完整清單重試一次，新增 `notice` SSE 事件）；前端 `frontend/src/api.ts`（`streamGenerationResult`／`sendChatMessage` 新增 `onNotice`）、`frontend/src/pages/WorkspacePage.tsx`（新增 `retryNotice` state 與 `handleStreamNotice`）、`frontend/src/components/FloatingChat.tsx`／`ChatPanel.tsx`（往下傳遞並顯示 `retryNotice`）、`frontend/src/index.css`（新增 `.chat-stream-notice` 樣式）。PR #37 的手動勾選功能（`TestCaseTable.tsx` 的勾選框、`WorkspacePage.tsx` 的「選取用例提問」按鈕與範圍列等）已經整批 revert，程式碼保留在 `feat/scoped-test-case-question` branch。
 
 **驗證方式**：`.venv/Scripts/python.exe -m pytest`（後端 70 個測試全過，新增 `resolve_related_test_case_ids`／`merge_scoped_llm_result`／`build_chat_messages` 範圍模式／`needs_full_context` 解析等測試）、`npx tsc --noEmit`、`npx vitest run`（前端 38 個測試全過）。瀏覽器實測（dev 環境 18002/5175，新建一個可刪除的測試專案，測完已刪除乾淨）：貼上一份刻意留白（登入功能明確、搜尋功能規格不完整）的需求文字，產生出 7 筆用例，模型正確提出 5 個澄清問題並各自標記關聯用例（例如「搜尋結果排序規則」的問題標記了 3 筆搜尋相關用例，「登入失敗訊息文案」的問題標記了 1 筆登入用例）；一次回覆全部 5 個問題後，查後端 log 確認這次請求 `scoped=4`（7 筆裡只有 4 筆真的送了完整內容給模型），且回傳結果正確只更新了那 4 筆、另外 3 筆（登入成功、登入失敗的另外兩個欄位驗證用例）維持原封不動，5 個問題也全部正確標記為已解決，沒有觸發 `needs_full_context` 重試（代表這次的標記是準確的）。
-
 ## 2026-09-01 呼叫模型時改成串流輸出，即時顯示正在產生的用例／問題
 
 **問題**：使用者問「模型操作的過程中會有回覆嗎？我可以看到這些回覆讓我知道他正在運作嗎？」——原本的做法是後端整批等模型把完整回應都產生完才一次拿到結果，前端在這幾分鐘的等待期間完全看不到任何內容，只有一個單純的「思考中…（已等待 N 秒）」計時器，感覺不到模型「正在運作」，尤其在前一則 FIX_NOTES 記錄的逾時預算調高到 280 秒之後，這段空等的時間更長了。使用者要求改成像 Claude 聊天介面那樣，即時把模型正在做的事照實描述出來。
