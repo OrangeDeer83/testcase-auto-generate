@@ -1886,6 +1886,23 @@ button.secondary:hover:not(:disabled) {
   background: #e3f5e9;
 }
 
+.workspace-pending-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: #3730a3;
+  cursor: pointer;
+}
+
+.workspace-pending-badge:hover {
+  background: #e0e7ff;
+}
+
 .workspace-actions {
   margin-left: auto;
   display: flex;
