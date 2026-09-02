@@ -53,7 +53,7 @@ function describeResult(result: GenerationResult): ChatMessage[] {
     {
       id: newId(),
       role: 'assistant',
-      content: `已更新測試用例，目前共 ${result.test_cases.length} 筆，沒有待釐清的問題。`,
+      content: `目前共 ${result.test_cases.length} 筆用例，沒有待釐清的問題。`,
     },
   ]
 }
@@ -459,17 +459,19 @@ export function WorkspacePage() {
 
       // 聊天式編輯不再直接套用進正式的用例清單（見 FIX_NOTES），AI 的建議會
       // 累積在 res.pending_changes 裡，使用者要到表格逐一點「套用」才會生效——
-      // 這裡只提示有幾筆待確認，不再比較前後差異產生「本次變動摘要」。
-      const changeSummary: ChatMessage[] =
-        res.pending_changes.length > 0
-          ? [
-              {
-                id: newId(),
-                role: 'assistant',
-                content: `AI 提出了 ${res.pending_changes.length} 項用例調整建議，請至下方用例表格逐一確認套用。`,
-              },
-            ]
-          : []
+      // 這裡一律顯示一則摘要訊息，不管有沒有建議都要講清楚，不能因為「這次
+      // 沒有用例被動到」就整個不回應，不然使用者看不出自己的訊息有沒有被
+      // 處理過（例如回答完問題後，畫面上除了問題數變少之外什麼都沒說）。
+      const changeSummary: ChatMessage[] = [
+        {
+          id: newId(),
+          role: 'assistant',
+          content:
+            res.pending_changes.length > 0
+              ? `AI 提出了 ${res.pending_changes.length} 項用例調整建議，請至下方用例表格逐一確認套用。`
+              : '這次沒有提出用例調整建議，測試用例內容維持原樣。',
+        },
+      ]
 
       scrollToFirstPendingChange(res.test_cases, res.pending_changes)
 
