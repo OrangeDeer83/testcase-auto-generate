@@ -29,6 +29,11 @@ interface TestCaseTableProps {
   pendingChanges?: PendingChange[]
   onApplyPendingChange?: (changeId: string) => void
   onDismissPendingChange?: (changeId: string) => void
+  /** AI 正在產生/思考回覆（generate 或 chat 進行中）時傳 true，暫時把整張表格的編輯
+   * 動作都停用——這段期間送出的編輯會在 debounce 存檔後被伺服器的版本檢查判定衝突、
+   * 整個回覆被捨棄（見後端 conversations.py chat() 的說明），與其讓使用者編輯完才
+   * 事後被告知「已捨棄」，不如編輯當下就先擋下來。 */
+  disabled?: boolean
 }
 
 interface AutoTextAreaProps {
@@ -97,6 +102,7 @@ export function TestCaseTable({
   pendingChanges,
   onApplyPendingChange,
   onDismissPendingChange,
+  disabled,
 }: TestCaseTableProps) {
   const isHighlighted = (key: string) => highlightedKeys?.has(key) ?? false
   const previousValueOf = (key: string) => previousValues?.get(key)
@@ -320,6 +326,7 @@ export function TestCaseTable({
               <input
                 className="name-input"
                 value={testCase.name}
+                disabled={disabled}
                 onChange={(e) => updateCase(caseIndex, { name: e.target.value })}
                 onFocus={focusClears([`case:${caseIndex}`])}
                 onClick={(e) => e.stopPropagation()}
@@ -332,6 +339,7 @@ export function TestCaseTable({
               <button
                 type="button"
                 className={`case-lock-toggle${locked ? ' case-lock-toggle-locked' : ''}`}
+                disabled={disabled}
                 onClick={(e) => {
                   e.stopPropagation()
                   toggleLock(caseIndex)
@@ -405,7 +413,7 @@ export function TestCaseTable({
                 <button
                   type="button"
                   className="case-proposal-apply"
-                  disabled={locked}
+                  disabled={locked || disabled}
                   onClick={(e) => {
                     e.stopPropagation()
                     onApplyPendingChange?.(pendingChange.id)
@@ -416,6 +424,7 @@ export function TestCaseTable({
                 <button
                   type="button"
                   className="case-proposal-dismiss"
+                  disabled={disabled}
                   onClick={(e) => {
                     e.stopPropagation()
                     onDismissPendingChange?.(pendingChange.id)
@@ -455,7 +464,7 @@ export function TestCaseTable({
                 id={`field-case:${caseIndex}:module`}
                 className={isHighlighted(`case:${caseIndex}:module`) ? 'cell-highlight' : ''}
                 value={testCase.module}
-                disabled={locked}
+                disabled={locked || disabled}
                 onChange={(e) => updateCase(caseIndex, { module: e.target.value })}
                 onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:module`])}
                 placeholder="例如 /模組/子功能"
@@ -476,7 +485,7 @@ export function TestCaseTable({
                 id={`field-case:${caseIndex}:priority`}
                 className={isHighlighted(`case:${caseIndex}:priority`) ? 'cell-highlight' : ''}
                 value={testCase.priority}
-                disabled={locked}
+                disabled={locked || disabled}
                 onChange={(e) => updateCase(caseIndex, { priority: e.target.value })}
                 onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:priority`])}
                 style={{ width: 80 }}
@@ -497,7 +506,7 @@ export function TestCaseTable({
                 id={`field-case:${caseIndex}:preconditions`}
                 className={isHighlighted(`case:${caseIndex}:preconditions`) ? 'cell-highlight' : ''}
                 value={testCase.preconditions}
-                disabled={locked}
+                disabled={locked || disabled}
                 onChange={(e) => updateCase(caseIndex, { preconditions: e.target.value })}
                 onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:preconditions`])}
               />
@@ -597,7 +606,7 @@ export function TestCaseTable({
                             : ''
                         }
                         value={step.description}
-                        disabled={locked}
+                        disabled={locked || disabled}
                         onChange={(value) =>
                           updateStep(caseIndex, stepIndex, { description: value })
                         }
@@ -623,7 +632,7 @@ export function TestCaseTable({
                             : ''
                         }
                         value={step.expected_result}
-                        disabled={locked}
+                        disabled={locked || disabled}
                         onChange={(value) =>
                           updateStep(caseIndex, stepIndex, { expected_result: value })
                         }
@@ -643,7 +652,7 @@ export function TestCaseTable({
                     <td>
                       <button
                         className="secondary"
-                        disabled={locked}
+                        disabled={locked || disabled}
                         onClick={() => removeStep(caseIndex, stepIndex)}
                       >
                         刪除
@@ -655,7 +664,7 @@ export function TestCaseTable({
             </tbody>
           </table>
           <div style={{ marginTop: 8 }}>
-            <button className="secondary" disabled={locked} onClick={() => addStep(caseIndex)}>
+            <button className="secondary" disabled={locked || disabled} onClick={() => addStep(caseIndex)}>
               + 新增步驟
             </button>
           </div>
@@ -666,7 +675,7 @@ export function TestCaseTable({
               id={`field-case:${caseIndex}:notes`}
               className={`notes-textarea${isHighlighted(`case:${caseIndex}:notes`) ? ' cell-highlight' : ''}`}
               value={testCase.notes}
-              disabled={locked}
+              disabled={locked || disabled}
               onChange={(value) => updateCase(caseIndex, { notes: value })}
               onFocus={focusClears([`case:${caseIndex}`, `case:${caseIndex}:notes`])}
             />
@@ -685,7 +694,7 @@ export function TestCaseTable({
             <button
               type="button"
               className="case-delete-button"
-              disabled={locked}
+              disabled={locked || disabled}
               onClick={() => removeCase(caseIndex)}
             >
               刪除這筆測試用例
@@ -708,6 +717,7 @@ export function TestCaseTable({
                 <button
                   type="button"
                   className="case-proposal-apply"
+                  disabled={disabled}
                   onClick={() => onApplyPendingChange?.(change.id)}
                 >
                   新增此用例
@@ -715,6 +725,7 @@ export function TestCaseTable({
                 <button
                   type="button"
                   className="case-proposal-dismiss"
+                  disabled={disabled}
                   onClick={() => onDismissPendingChange?.(change.id)}
                 >
                   忽略建議
@@ -741,7 +752,7 @@ export function TestCaseTable({
         )
       })}
 
-      <button className="secondary" onClick={addCase}>
+      <button className="secondary" disabled={disabled} onClick={addCase}>
         + 新增測試用例
       </button>
       {lightbox}
