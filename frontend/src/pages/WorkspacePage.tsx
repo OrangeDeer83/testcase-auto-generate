@@ -726,6 +726,7 @@ export function WorkspacePage() {
           pendingChanges={result.pending_changes}
           onApplyPendingChange={handleApplyPendingChange}
           onDismissPendingChange={handleDismissPendingChange}
+          disabled={busy}
         />
       </div>
 
