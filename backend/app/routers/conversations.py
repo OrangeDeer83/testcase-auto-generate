@@ -294,6 +294,38 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
         previous_version = conversation.last_result.result_version if conversation.last_result else 0
         result = enforce_lock_on_llm_result(previous_cases, result)
 
+        # 等模型回覆這段時間可能不短，寫回之前重新讀一次對話目前的狀態，不能沿用
+        # 請求剛進來時讀到的 conversation——conversation_store.save_conversation 是整份
+        # 物件覆寫，如果沿用舊快照存回去，這段等待期間任何其他請求已經存進去的東西
+        # （手動編輯用例的 PUT /test-cases、套用/忽略建議、甚至只是改對話名稱）都會被
+        # 悄悄蓋回等待前的舊內容。test_cases 這邊有 result_version 可以明確比對：版本
+        # 對不上就代表這段等待期間內容已經變過，這次 AI 建議是基於過期內容算出來的，
+        # 不能再套用，直接捨棄並讓使用者知道；版本沒變的話就在這份「新讀到」的物件上
+        # 疊加這次的結果，而不是疊在舊快照上，其他欄位（例如同時間發生的改名）才不會
+        # 被意外復原。
+        current_conversation = conversation_store.get_conversation(project_id, conversation_id)
+        if current_conversation is None:
+            yield _sse_event("error", {"detail": "這個對話已經被刪除，這次的建議已捨棄。"})
+            return
+        current_version = (
+            current_conversation.last_result.result_version if current_conversation.last_result else 0
+        )
+        try:
+            check_result_version(current_version, previous_version)
+        except VersionConflictError:
+            logger.info(
+                "POST /chat conversation=%s 等待模型回覆期間測試用例已被修改（%d -> %d），捨棄這次建議",
+                conversation_id, previous_version, current_version,
+            )
+            yield _sse_event(
+                "error",
+                {
+                    "detail": "在等待 AI 回覆的期間，測試用例已經被修改過，這次的建議已捨棄，"
+                    "請重新整理後再試一次。"
+                },
+            )
+            return
+
         # 聊天式編輯不再直接覆蓋正式的 test_cases——AI 提出的變動先包成待確認的
         # PendingChange，使用者要在畫面上個別點「套用」才會真的生效（見
         # test_case_lock.py 的 compute_pending_changes／apply_pending_change）。
@@ -302,7 +334,9 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
         # 下一輪自動縮小範圍（resolve_related_test_case_ids）才看得到最新的
         # 待處理問題清單。
         new_pending = compute_pending_changes(previous_cases, result.test_cases)
-        existing_pending = conversation.last_result.pending_changes if conversation.last_result else []
+        existing_pending = (
+            current_conversation.last_result.pending_changes if current_conversation.last_result else []
+        )
         merged_pending = merge_pending_changes(existing_pending, new_pending)
 
         committed_result = GenerationResult(
@@ -311,12 +345,12 @@ def chat(project_id: str, conversation_id: str, payload: ChatPayload):
             result_version=previous_version,
             pending_changes=merged_pending,
         )
-        conversation.last_result = committed_result
-        conversation.llm_history.append(ChatMessage(role="user", content=final_message))
-        conversation.llm_history.append(
+        current_conversation.last_result = committed_result
+        current_conversation.llm_history.append(ChatMessage(role="user", content=final_message))
+        current_conversation.llm_history.append(
             ChatMessage(role="assistant", content=_summarize_for_history(committed_result, new_pending))
         )
-        conversation_store.save_conversation(project_id, conversation)
+        conversation_store.save_conversation(project_id, current_conversation)
         logger.info(
             "POST /chat conversation=%s 結果: test_cases=%d questions=%d pending_changes=%d(+%d)",
             conversation_id, len(committed_result.test_cases), len(committed_result.clarification_questions),
