@@ -7,7 +7,13 @@ from collections.abc import Iterator
 
 from app.logging_config import logger
 from app.models.material import ImageRef, ParsedMaterial
-from app.models.test_case import ChatMessage, ClarificationQuestion, GenerationResult, TestCase
+from app.models.test_case import (
+    ChatMessage,
+    ClarificationQuestion,
+    FeatureBreakdownItem,
+    GenerationResult,
+    TestCase,
+)
 
 SYSTEM_PROMPT = """你是一位資深 QA 測試工程師，任務是根據使用者提供的需求文件、UI 截圖與 API 文件，撰寫測試用例。
 
@@ -107,6 +113,38 @@ SYSTEM_PROMPT_CHAT = """你是一位資深 QA 測試工程師，正在與使用�
 """
 
 
+SYSTEM_PROMPT_FEATURE_BREAKDOWN = """你是一位資深 QA 測試工程師，正在準備撰寫測試用例前的規劃工作：把使用者提供的需求文件、
+UI 截圖等素材，拆分成幾個「功能範圍」，之後會針對每個功能範圍各自產生測試用例（這樣每個功能
+都有獨立的機會被仔細檢視，不會因為一次要處理的素材太多而被模型自己的取捨排擠掉）。這一步**不
+需要**產生測試用例本身，只需要判斷合理的功能切分。
+
+輸出必須是一個 JSON 物件（不要有其他說明文字或 Markdown code fence），格式如下：
+{
+  "features": [
+    {
+      "name": "功能名稱，具體對應畫面或流程，例如「登入」「訂單建立」",
+      "description": "簡短描述這個功能涵蓋的範圍（畫面、操作流程、子功能），讓人一眼能判斷拆得合不合理",
+      "material_filenames": ["這個功能對應到的素材檔名，必須完全照抄素材內容裡「【檔案：...】」或「【圖片：...】」標示的檔名，不可以自己改寫或縮寫"]
+    }
+  ]
+}
+
+規則：
+1. 切分依據是「功能／流程」，不是「素材」本身：如果同一個操作流程橫跨好幾份素材（例如好幾張
+   連續畫面截圖），這些素材屬於同一個功能，要合併成一筆，不要因為它們是不同素材就硬拆成好幾個
+   功能。反過來，如果一份素材本身就涵蓋多個彼此獨立的功能（例如一份規格文件裡分好幾個章節，
+   分別描述不相關的功能），要拆成多筆，每筆的 material_filenames 都指向同一份素材。
+2. 一份素材可以同時屬於多個功能：例如共用的登入頁、導覽列、共用的錯誤訊息元件，只要它是多個
+   功能流程都會用到的前置畫面或共用元素，就把它的檔名同時放進相關的每一筆功能。
+3. 如果素材內容真的看不出明確的功能分野（例如只有一份籠統的文字說明、素材彼此之間看不出邊界），
+   允許保底輸出單一筆涵蓋全部素材的功能，不要為了硬湊出多筆切分而亂猜切法。
+4. name 要具體、可辨識（對應實際畫面/流程名稱），不要用「功能一」「功能二」這種沒有資訊量的
+   命名；description 一到兩句話說明範圍即可，不用鉅細靡遺。
+5. 只回傳 JSON 本身，不要輸出測試用例。
+6. 所有文字使用繁體中文。
+"""
+
+
 def _iter_numbered_images(
     materials: list[ParsedMaterial],
 ) -> Iterator[tuple[int, ParsedMaterial, str]]:
@@ -196,6 +234,42 @@ def build_messages(materials: list[ParsedMaterial]) -> list[dict]:
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": build_material_content(materials)},
+    ]
+
+
+def build_feature_breakdown_messages(materials: list[ParsedMaterial]) -> list[dict]:
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT_FEATURE_BREAKDOWN},
+        {"role": "user", "content": build_material_content(materials)},
+    ]
+
+
+def build_feature_scoped_messages(
+    materials: list[ParsedMaterial], feature: FeatureBreakdownItem
+) -> list[dict]:
+    """跟 build_messages 用同一份 SYSTEM_PROMPT（涵蓋度優先、不可亂猜等規則不變），
+    差別是額外附加一段限定範圍的說明，把模型的輸出鎖定在某一個功能——但素材本身
+    仍然是「全部已選素材」，不是只給這個功能對應到的那幾份，理由跟 build_chat_messages
+    的 scoped_ids 分支一樣：功能之間常常有關聯（例如共用的登入前置條件），只送這個
+    功能自己的素材會讓模型看不到必要的背景，反而更容易產生錯誤或不完整的用例。"""
+    content = build_material_content(materials)
+    scope_names = [m.filename for m in materials if m.id in feature.material_ids]
+    content.append(
+        {
+            "type": "text",
+            "text": (
+                f"**重要，務必遵守**：這次只需要針對以下功能範圍產生測試用例：\n"
+                f"「{feature.name}」——{feature.description or '（無額外說明）'}\n"
+                + (f"主要對應素材：{'、'.join(scope_names)}\n" if scope_names else "")
+                + "以上素材以外的其他素材只是背景參考，不要為它們產生測試用例，除非這個功能"
+                "範圍的用例明確需要依賴其他素材描述的前置條件（例如登入）。其他功能範圍會"
+                "各自另外呼叫一次產生，不用擔心遺漏，這次只專注在上面指定的範圍就好。"
+            ),
+        }
+    )
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": content},
     ]
 
 
@@ -365,7 +439,7 @@ def _drop_self_contradicting_questions(result: GenerationResult) -> GenerationRe
     return result
 
 
-def parse_generation_result(raw_response: str) -> GenerationResult:
+def _parse_json_with_repair(raw_response: str) -> dict:
     text = raw_response.strip()
     if text.startswith("```"):
         text = text.strip("`")
@@ -374,17 +448,55 @@ def parse_generation_result(raw_response: str) -> GenerationResult:
         text = text.strip()
 
     try:
-        data = json.loads(text)
+        return json.loads(text)
     except json.JSONDecodeError as original_exc:
         # 模型偶爾會在字串內容中夾帶未跳脫的引號（例如舉例時寫 ["A", "A"]），
         # 破壞 JSON 結構本身；先嘗試用 json_repair 修復常見的格式錯誤，
         # 修不好才把原始的解析錯誤丟出去，不要吞掉真正的問題。
         try:
-            data = json.loads(repair_json(text))
+            return json.loads(repair_json(text))
         except (json.JSONDecodeError, ValueError):
             raise LLMResponseParseError(
                 f"LLM 回傳內容不是合法 JSON：{original_exc}"
             ) from original_exc
 
+
+def parse_generation_result(raw_response: str) -> GenerationResult:
+    data = _parse_json_with_repair(raw_response)
     result = GenerationResult.model_validate(data)
     return _drop_self_contradicting_questions(result)
+
+
+def parse_feature_breakdown(
+    raw_response: str, materials: list[ParsedMaterial]
+) -> list[FeatureBreakdownItem]:
+    """模型是用檔名（material_filenames）指出每個功能對應到哪些素材，因為它看不到
+    我們內部的素材 id；這裡負責把檔名反查回真正的 material id，組成持久化用的
+    FeatureBreakdownItem。素材檔名在同一個專案內保證唯一（見 project_store.py 的
+    make_unique_filename），可以安全地用檔名一對一反查。查無對應素材的檔名（模型
+    打錯字、或誤引用了不存在的檔名）直接忽略掉那個檔名，不中斷整個解析——這個功能
+    項目仍然會出現在清單裡，只是 material_ids 可能不完整，使用者接下來在確認畫面
+    本來就可以手動調整，不需要因為一個檔名對不上就讓整批拆分失敗。"""
+    data = _parse_json_with_repair(raw_response)
+    material_id_by_filename = {m.filename: m.id for m in materials}
+
+    features: list[FeatureBreakdownItem] = []
+    for raw_feature in data.get("features", []):
+        filenames = raw_feature.get("material_filenames", [])
+        material_ids = [
+            material_id_by_filename[name] for name in filenames if name in material_id_by_filename
+        ]
+        missing = [name for name in filenames if name not in material_id_by_filename]
+        if missing:
+            logger.warning(
+                "功能拆分引用了不存在的素材檔名，已忽略: feature=%r missing=%r",
+                raw_feature.get("name"), missing,
+            )
+        features.append(
+            FeatureBreakdownItem(
+                name=raw_feature.get("name", ""),
+                description=raw_feature.get("description", ""),
+                material_ids=material_ids,
+            )
+        )
+    return features
