@@ -45,6 +45,16 @@ export interface GenerationResult {
   pending_changes: PendingChange[]
 }
 
+/** 初次產生用例前的規劃步驟：把選取的素材拆成功能範圍，使用者確認/調整過後，
+ * 才針對每個功能各自呼叫一次生成（見 FeatureGenerationProgress）。materialIds
+ * 可能跟其他功能重疊（例如共用的登入頁面），也可能只涵蓋一部分已選素材。 */
+export interface FeatureBreakdownItem {
+  id: string
+  name: string
+  description: string
+  materialIds: string[]
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
@@ -93,6 +103,7 @@ export interface Conversation {
   selectedMaterialIds: string[]
   chatLog: ChatMessage[]
   lastResult: GenerationResult | null
+  featureBreakdown: FeatureBreakdownItem[] | null
   createdAt: number
   updatedAt: number
 }
