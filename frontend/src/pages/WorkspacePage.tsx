@@ -6,7 +6,7 @@ import {
   deleteMaterial,
   dismissPendingChange,
   exportExcel,
-  generate,
+  generateFeatureBreakdown,
   getConversation,
   getImageMap,
   getMaterials,
@@ -16,10 +16,13 @@ import {
   saveChatLog,
   ungroupImage,
   updateConversation,
+  updateFeatureBreakdown,
   updateMaterial,
   updateTestCases,
   uploadMaterials,
 } from '../api'
+import { FeatureBreakdownPanel } from '../components/FeatureBreakdownPanel'
+import { FeatureGenerationProgress } from '../components/FeatureGenerationProgress'
 import { FloatingChat } from '../components/FloatingChat'
 import { MaterialSelector } from '../components/MaterialSelector'
 import { ModalOverlay } from '../components/ModalOverlay'
@@ -30,7 +33,15 @@ import { countMaterialUsage } from '../materialUsage'
 import { extractStreamProgress, type StreamProgressLine } from '../streamProgress'
 import { useDuplicateTabWarning } from '../useDuplicateTabWarning'
 import type { ShellContext } from './ProjectLayout'
-import type { ChatMessage, GenerationResult, ImageRef, PendingChange, TestCase, UploadedMaterial } from '../types'
+import type {
+  ChatMessage,
+  FeatureBreakdownItem,
+  GenerationResult,
+  ImageRef,
+  PendingChange,
+  TestCase,
+  UploadedMaterial,
+} from '../types'
 
 const EMPTY_RESULT: GenerationResult = {
   test_cases: [],
@@ -86,6 +97,14 @@ export function WorkspacePage() {
   const skipNextAutosaveRef = useRef(true)
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([])
   const [result, setResult] = useState<GenerationResult>(EMPTY_RESULT)
+  // 初次產生用例前的規劃步驟：AI 先把素材拆成功能清單（見 FeatureBreakdownPanel），
+  // 使用者確認過（breakdownConfirmed）才會進到平行產生（FeatureGenerationProgress）。
+  // featureBreakdown 只在對話還沒有 last_result 時有意義，一旦 hasResult 就不會再
+  // 用到，不需要額外清掉。breakdownConfirmed 刻意不持久化：重整頁面回到確認畫面
+  // 重新按一次即可，不是需要跨重整保留的關鍵狀態（見 FIX_NOTES 的已知限制）。
+  const [featureBreakdown, setFeatureBreakdown] = useState<FeatureBreakdownItem[] | null>(null)
+  const [breakdownConfirmed, setBreakdownConfirmed] = useState(false)
+  const skipNextBreakdownAutosaveRef = useRef(true)
   const [chatLog, setChatLog] = useState<ChatMessage[]>([])
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -154,6 +173,8 @@ export function WorkspacePage() {
     setHighlightedKeys(new Set())
     setPreviousValues(new Map())
     skipNextAutosaveRef.current = true
+    skipNextBreakdownAutosaveRef.current = true
+    setBreakdownConfirmed(false)
     Promise.all([
       getMaterials(projectId),
       getConversation(projectId, conversationId),
@@ -164,6 +185,7 @@ export function WorkspacePage() {
         savedNameRef.current = conversation.name
         setSelectedMaterialIds(conversation.selectedMaterialIds)
         setResult(conversation.lastResult ?? EMPTY_RESULT)
+        setFeatureBreakdown(conversation.featureBreakdown)
         setChatLog(hydrateChatLog(conversation.chatLog, mats))
         setImageMap(new Map(refs.map((ref) => [ref.number, ref])))
         setLoaded(true)
@@ -214,6 +236,26 @@ export function WorkspacePage() {
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result, loaded])
+
+  // 使用者在 FeatureBreakdownPanel 手動調整功能清單（改名、改描述、調整素材
+  // 歸屬、刪除/新增功能）時，比照上面用例表格的 debounce 存檔模式，避免使用者
+  // 重整頁面時遺失還沒確認的調整——一旦已經進到平行產生階段（breakdownConfirmed）
+  // 或已經有 last_result，這份清單就不會再變動，不需要繼續存。
+  useEffect(() => {
+    if (!loaded || !projectId || !conversationId) return
+    if (!featureBreakdown || breakdownConfirmed || result.test_cases.length > 0) return
+    if (skipNextBreakdownAutosaveRef.current) {
+      skipNextBreakdownAutosaveRef.current = false
+      return
+    }
+    const timer = setTimeout(() => {
+      updateFeatureBreakdown(projectId, conversationId, featureBreakdown).catch((err) => {
+        setError(err instanceof Error ? err.message : '自動儲存功能拆分失敗')
+      })
+    }, 1000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [featureBreakdown, loaded])
 
   if (!projectId || !conversationId) return null
 
@@ -379,7 +421,7 @@ export function WorkspacePage() {
     setRetryNotice(null)
   }
 
-  const handleGenerate = async () => {
+  const handleGenerateFeatureBreakdown = async () => {
     if (selectedMaterialIds.length === 0) {
       setError('請先勾選至少一項素材再產生測試用例')
       return
@@ -389,19 +431,32 @@ export function WorkspacePage() {
     resetStreamProgress()
     setError(null)
     try {
-      const res = await generate(projectId, conversationId, handleStreamDelta)
-      setResult(res)
-      const log = describeResult(res)
+      const features = await generateFeatureBreakdown(projectId, conversationId, handleStreamDelta)
+      skipNextBreakdownAutosaveRef.current = true
+      setFeatureBreakdown(features)
+      setBreakdownConfirmed(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '拆分功能失敗')
+    } finally {
+      setBusy(false)
+      setBusyStartedAt(null)
+      resetStreamProgress()
+    }
+  }
+
+  const handleFeatureGenerationComplete = async (merged: GenerationResult) => {
+    setError(null)
+    try {
+      const saved = await updateTestCases(projectId, conversationId, merged)
+      setResult(saved)
+      skipNextAutosaveRef.current = true
+      const log = describeResult(saved)
       setChatLog(log)
       await persistChatLog(log)
       const refs = await getImageMap(projectId, conversationId)
       setImageMap(new Map(refs.map((ref) => [ref.number, ref])))
     } catch (err) {
-      setError(err instanceof Error ? err.message : '產生失敗')
-    } finally {
-      setBusy(false)
-      setBusyStartedAt(null)
-      resetStreamProgress()
+      setError(err instanceof Error ? err.message : '提交產生結果失敗')
     }
   }
 
@@ -599,30 +654,57 @@ export function WorkspacePage() {
             </Tooltip>
           )}
         </div>
-        <div className="panel">
-          <h2>選擇要使用的素材</h2>
-          <p className="subtitle">
-            這個對話會把勾選的素材送給模型參考——專案裡新增的素材不會自動加進來，避免每次都把不相關的東西一起送給模型。
-          </p>
-          <MaterialSelector
-            materials={materials}
-            selectedIds={selectedMaterialIds}
-            busy={busy}
-            onChange={handleSelectedMaterialsChange}
-            onUpdateMaterial={handleUpdateMaterial}
-            onAddFiles={handleAddFilesToSelector}
-            onAddText={handleAddTextToSelector}
-            onRemoveMaterial={handleRemoveMaterial}
-            onMergeMaterials={handleMergeMaterials}
-            onUngroupImage={handleUngroupImage}
-          />
-          <div className="toolbar">
-            <span className="subtitle">已選擇 {selectedMaterialIds.length} 項素材</span>
-            <button disabled={busy || selectedMaterialIds.length === 0} onClick={handleGenerate}>
-              {busy ? '產生中…' : '開始產生測試用例'}
-            </button>
+        {!featureBreakdown ? (
+          <div className="panel">
+            <h2>選擇要使用的素材</h2>
+            <p className="subtitle">
+              這個對話會把勾選的素材送給模型參考——專案裡新增的素材不會自動加進來，避免每次都把不相關的東西一起送給模型。
+            </p>
+            <MaterialSelector
+              materials={materials}
+              selectedIds={selectedMaterialIds}
+              busy={busy}
+              onChange={handleSelectedMaterialsChange}
+              onUpdateMaterial={handleUpdateMaterial}
+              onAddFiles={handleAddFilesToSelector}
+              onAddText={handleAddTextToSelector}
+              onRemoveMaterial={handleRemoveMaterial}
+              onMergeMaterials={handleMergeMaterials}
+              onUngroupImage={handleUngroupImage}
+            />
+            <div className="toolbar">
+              <span className="subtitle">已選擇 {selectedMaterialIds.length} 項素材</span>
+              <button
+                disabled={busy || selectedMaterialIds.length === 0}
+                onClick={handleGenerateFeatureBreakdown}
+              >
+                {busy ? '分析功能中…' : '開始產生測試用例'}
+              </button>
+            </div>
           </div>
-        </div>
+        ) : !breakdownConfirmed ? (
+          <div className="panel">
+            <h2>確認功能拆分</h2>
+            <FeatureBreakdownPanel
+              features={featureBreakdown}
+              materials={materials}
+              selectedMaterialIds={selectedMaterialIds}
+              busy={busy}
+              onChange={setFeatureBreakdown}
+              onRegenerate={handleGenerateFeatureBreakdown}
+              onConfirm={() => setBreakdownConfirmed(true)}
+            />
+          </div>
+        ) : (
+          <div className="panel">
+            <FeatureGenerationProgress
+              projectId={projectId}
+              conversationId={conversationId}
+              features={featureBreakdown}
+              onComplete={handleFeatureGenerationComplete}
+            />
+          </div>
+        )}
       </div>
     )
   }

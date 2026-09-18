@@ -8,13 +8,16 @@ from pydantic import BaseModel, Field
 from app.logging_config import logger
 from app.models.conversation import ChatEntry, Conversation, ConversationSummary
 from app.models.material import ImageRef
-from app.models.test_case import ChatMessage, GenerationResult, PendingChange, TestCase
+from app.models.test_case import ChatMessage, FeatureBreakdownItem, GenerationResult, PendingChange, TestCase
 from app.services import conversation_store, project_store
 from app.services.llm_client import stream_chat_completion
 from app.services.prompt_builder import (
     LLMResponseParseError,
     build_chat_messages,
+    build_feature_breakdown_messages,
+    build_feature_scoped_messages,
     build_messages,
+    parse_feature_breakdown,
     parse_generation_result,
     resolve_image_numbers,
 )
@@ -189,6 +192,131 @@ def generate(project_id: str, conversation_id: str):
         logger.info(
             "POST /generate conversation=%s 結果: test_cases=%d questions=%d",
             conversation_id, len(result.test_cases), len(result.clarification_questions),
+        )
+        yield _sse_event("result", result.model_dump())
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+class FeatureBreakdownResult(BaseModel):
+    features: list[FeatureBreakdownItem] = Field(default_factory=list)
+
+
+@router.post("/{conversation_id}/feature-breakdown")
+def generate_feature_breakdown(project_id: str, conversation_id: str):
+    """初次產生用例前的規劃步驟：把選取的素材拆成幾個功能範圍，讓使用者在畫面上
+    確認/調整過後，才對每個功能各自呼叫一次 /generate-scoped（見下方），取代
+    一次性把全部素材塞給 /generate 的做法，降低素材一多時漏掉某些畫面/功能的
+    機率（見這次功能的討論脈絡：使用者反映涵蓋度不夠可靠）。"""
+    _get_project_or_404(project_id)
+    conversation = _get_conversation_or_404(project_id, conversation_id)
+
+    materials = _selected_materials(project_id, conversation)
+    if not materials:
+        raise HTTPException(status_code=400, detail="這個對話尚未選擇任何素材")
+
+    logger.info(
+        "POST /feature-breakdown project=%s conversation=%s materials=%d",
+        project_id, conversation_id, len(materials),
+    )
+
+    messages = build_feature_breakdown_messages(materials)
+
+    def event_stream():
+        raw_response = yield from _stream_llm_events(
+            "POST /feature-breakdown", conversation_id, messages
+        )
+        if raw_response is None:
+            return
+
+        try:
+            features = parse_feature_breakdown(raw_response, materials)
+        except LLMResponseParseError as exc:
+            logger.error(
+                "POST /feature-breakdown conversation=%s 解析失敗: %s", conversation_id, exc
+            )
+            yield _sse_event("error", {"detail": str(exc)})
+            return
+
+        conversation.feature_breakdown = features
+        conversation_store.save_conversation(project_id, conversation)
+        logger.info(
+            "POST /feature-breakdown conversation=%s 結果: features=%d",
+            conversation_id, len(features),
+        )
+        yield _sse_event("result", FeatureBreakdownResult(features=features).model_dump())
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+class FeatureBreakdownUpdatePayload(BaseModel):
+    features: list[FeatureBreakdownItem]
+
+
+@router.patch("/{conversation_id}/feature-breakdown", response_model=FeatureBreakdownResult)
+def update_feature_breakdown(
+    project_id: str, conversation_id: str, payload: FeatureBreakdownUpdatePayload
+):
+    """使用者在「確認功能清單」畫面手動調整（改名、改描述、調整素材歸屬、刪除/
+    新增功能）——純資料覆寫，不呼叫模型。"""
+    _get_project_or_404(project_id)
+    conversation = _get_conversation_or_404(project_id, conversation_id)
+    conversation.feature_breakdown = payload.features
+    conversation_store.save_conversation(project_id, conversation)
+    return FeatureBreakdownResult(features=payload.features)
+
+
+class GenerateScopedPayload(BaseModel):
+    feature_id: str
+
+
+@router.post("/{conversation_id}/generate-scoped")
+def generate_scoped(project_id: str, conversation_id: str, payload: GenerateScopedPayload):
+    """對「功能拆分」清單裡的其中一個功能各自呼叫一次生成——前端會對每個功能各自
+    打一次這支端點（平行送出，見前端 FeatureGenerationProgress），全部完成後才在
+    前端合併、透過既有的 PUT /test-cases 一次提交。這支端點本身刻意不寫入
+    conversation.last_result，避免多個平行請求互相搶著寫同一份 last_result
+    造成資料競爭（同一類問題可參考 chat() 那邊版本檢查的說明）。"""
+    _get_project_or_404(project_id)
+    conversation = _get_conversation_or_404(project_id, conversation_id)
+
+    feature = next(
+        (f for f in (conversation.feature_breakdown or []) if f.id == payload.feature_id), None
+    )
+    if feature is None:
+        raise HTTPException(status_code=404, detail="找不到這個功能範圍，可能已經被調整過")
+
+    materials = _selected_materials(project_id, conversation)
+    if not materials:
+        raise HTTPException(status_code=400, detail="這個對話尚未選擇任何素材")
+
+    logger.info(
+        "POST /generate-scoped project=%s conversation=%s feature=%r materials=%d",
+        project_id, conversation_id, feature.name, len(materials),
+    )
+
+    messages = build_feature_scoped_messages(materials, feature)
+
+    def event_stream():
+        raw_response = yield from _stream_llm_events(
+            f"POST /generate-scoped[{feature.name}]", conversation_id, messages
+        )
+        if raw_response is None:
+            return
+
+        try:
+            result = parse_generation_result(raw_response)
+        except LLMResponseParseError as exc:
+            logger.error(
+                "POST /generate-scoped conversation=%s feature=%r 解析失敗: %s",
+                conversation_id, feature.name, exc,
+            )
+            yield _sse_event("error", {"detail": str(exc)})
+            return
+
+        logger.info(
+            "POST /generate-scoped conversation=%s feature=%r 結果: test_cases=%d questions=%d",
+            conversation_id, feature.name, len(result.test_cases), len(result.clarification_questions),
         )
         yield _sse_event("result", result.model_dump())
 

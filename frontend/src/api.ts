@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   Conversation,
   ConversationSummary,
+  FeatureBreakdownItem,
   GenerationResult,
   ImageRef,
   Project,
@@ -73,24 +74,26 @@ function parseSseEvent(raw: string): SseEvent {
   return { event, data: dataLines.length ? JSON.parse(dataLines.join('\n')) : null }
 }
 
-/** /generate、/chat 共用的串流呼叫邏輯：後端用 SSE 陸續送出 `delta`（模型正在
- * 產生的文字片段）跟最後一個 `result`（完整處理過、可以直接當結果用的
- * GenerationResult），失敗時送 `error`。`onDelta` 讓呼叫端可以即時把片段顯示
- * 給使用者看（見 materialRisk 的姊妹檔 streamProgress.ts），不需要串流的呼叫端
- * 可以不傳。`onNotice` 對應後端「自動縮小範圍後發現資訊不夠、正在用完整清單
- * 重新問一次」時送出的 `notice` 事件——這不是錯誤，是一個過程說明，重新開始
- * 的那次呼叫會有自己全新一批 `delta`，呼叫端應該把先前累積的片段清掉重算。 */
-async function streamGenerationResult(
+/** /generate、/chat、/feature-breakdown、/generate-scoped 共用的串流呼叫邏輯：
+ * 後端用 SSE 陸續送出 `delta`（模型正在產生的文字片段）跟最後一個 `result`
+ * （完整處理過、可以直接當結果用的資料，型別依呼叫端而定——大多數是
+ * GenerationResult，但 /feature-breakdown 回傳的是功能清單），失敗時送
+ * `error`。`onDelta` 讓呼叫端可以即時把片段顯示給使用者看（見 materialRisk
+ * 的姊妹檔 streamProgress.ts），不需要串流的呼叫端可以不傳。`onNotice` 對應
+ * 後端「自動縮小範圍後發現資訊不夠、正在用完整清單重新問一次」時送出的
+ * `notice` 事件——這不是錯誤，是一個過程說明，重新開始的那次呼叫會有自己
+ * 全新一批 `delta`，呼叫端應該把先前累積的片段清掉重算。 */
+async function streamGenerationResult<T = GenerationResult>(
   url: string,
   init: RequestInit,
   onDelta?: (text: string) => void,
   onNotice?: (text: string) => void,
-): Promise<GenerationResult> {
+): Promise<T> {
   const response = await fetch(url, init)
   if (!response.ok) {
-    return handleResponse<GenerationResult>(response)
+    return handleResponse<T>(response)
   }
-  let result: GenerationResult | null = null
+  let result: T | null = null
   for await (const evt of readSseEvents(response)) {
     if (evt.event === 'delta') {
       onDelta?.(evt.data.text)
@@ -154,6 +157,24 @@ function toChatEntryPayload(message: ChatMessage) {
   }
 }
 
+function mapFeatureBreakdownItem(raw: any): FeatureBreakdownItem {
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description ?? '',
+    materialIds: raw.material_ids ?? [],
+  }
+}
+
+function toFeatureBreakdownItemPayload(item: FeatureBreakdownItem) {
+  return {
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    material_ids: item.materialIds,
+  }
+}
+
 function mapConversation(raw: any): Conversation {
   return {
     id: raw.id,
@@ -162,6 +183,7 @@ function mapConversation(raw: any): Conversation {
     selectedMaterialIds: raw.selected_material_ids,
     chatLog: (raw.chat_log ?? []).map(mapChatEntry),
     lastResult: raw.last_result ?? null,
+    featureBreakdown: raw.feature_breakdown ? raw.feature_breakdown.map(mapFeatureBreakdownItem) : null,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
   }
@@ -371,6 +393,61 @@ export async function generate(
   return streamGenerationResult(
     `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/generate`,
     { method: 'POST' },
+    onDelta,
+  )
+}
+
+/** 初次產生用例前的規劃步驟：把選取的素材拆成功能範圍（見 FeatureBreakdownItem
+ * 的說明），成功後會持久化在這個對話上。 */
+export async function generateFeatureBreakdown(
+  projectId: string,
+  conversationId: string,
+  onDelta?: (text: string) => void,
+): Promise<FeatureBreakdownItem[]> {
+  const raw = await streamGenerationResult<{ features: any[] }>(
+    `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/feature-breakdown`,
+    { method: 'POST' },
+    onDelta,
+  )
+  return raw.features.map(mapFeatureBreakdownItem)
+}
+
+/** 使用者在「確認功能清單」畫面手動調整（改名、改描述、調整素材歸屬、刪除/
+ * 新增功能）——純資料覆寫，不呼叫模型。 */
+export async function updateFeatureBreakdown(
+  projectId: string,
+  conversationId: string,
+  features: FeatureBreakdownItem[],
+): Promise<FeatureBreakdownItem[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/feature-breakdown`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ features: features.map(toFeatureBreakdownItemPayload) }),
+    },
+  )
+  const raw = await handleResponse<{ features: any[] }>(response)
+  return raw.features.map(mapFeatureBreakdownItem)
+}
+
+/** 針對「功能拆分」清單裡的其中一個功能各自呼叫一次生成——呼叫端會對每個功能
+ * 各自打一次這支（平行送出），這支端點本身不會持久化任何東西，回傳值只是這個
+ * 功能自己的 GenerationResult，全部功能都完成後由呼叫端合併、透過
+ * updateTestCases 一次提交。 */
+export async function generateScoped(
+  projectId: string,
+  conversationId: string,
+  featureId: string,
+  onDelta?: (text: string) => void,
+): Promise<GenerationResult> {
+  return streamGenerationResult(
+    `${API_BASE_URL}/api/projects/${projectId}/conversations/${conversationId}/generate-scoped`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feature_id: featureId }),
+    },
     onDelta,
   )
 }

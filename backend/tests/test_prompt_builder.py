@@ -1,10 +1,13 @@
 import json
 
 from app.models.material import ParsedMaterial
-from app.models.test_case import TestCase, TestStep
+from app.models.test_case import FeatureBreakdownItem, TestCase, TestStep
 from app.services.prompt_builder import (
+    SYSTEM_PROMPT,
     build_chat_messages,
+    build_feature_scoped_messages,
     build_material_content,
+    parse_feature_breakdown,
     parse_generation_result,
     resolve_image_numbers,
 )
@@ -273,3 +276,68 @@ def test_build_chat_messages_with_scope_locked_list_excludes_out_of_scope() -> N
     lock_section = text.split("已鎖定審核")[1]
     assert "用例A" in lock_section
     assert "用例B" not in lock_section
+
+
+def test_parse_feature_breakdown_resolves_filenames_to_material_ids() -> None:
+    login = ParsedMaterial(filename="登入.png", kind="image", image_data_url="data:image/png;base64,A")
+    home = ParsedMaterial(filename="首頁.png", kind="image", image_data_url="data:image/png;base64,B")
+    raw = json.dumps(
+        {
+            "features": [
+                {"name": "登入", "description": "登入流程", "material_filenames": ["登入.png"]},
+                {
+                    "name": "首頁導覽",
+                    "description": "登入後的首頁",
+                    "material_filenames": ["首頁.png", "登入.png"],
+                },
+            ]
+        }
+    )
+
+    features = parse_feature_breakdown(raw, [login, home])
+
+    assert [f.name for f in features] == ["登入", "首頁導覽"]
+    assert features[0].material_ids == [login.id]
+    # 同一份素材（登入.png）可以同時被兩個功能引用。
+    assert features[1].material_ids == [home.id, login.id]
+
+
+def test_parse_feature_breakdown_ignores_unknown_filenames_without_failing() -> None:
+    login = ParsedMaterial(filename="登入.png", kind="image", image_data_url="data:image/png;base64,A")
+    raw = json.dumps(
+        {
+            "features": [
+                {
+                    "name": "登入",
+                    "description": "",
+                    "material_filenames": ["登入.png", "不存在的檔名.png"],
+                }
+            ]
+        }
+    )
+
+    features = parse_feature_breakdown(raw, [login])
+
+    assert len(features) == 1
+    assert features[0].material_ids == [login.id]
+
+
+def test_build_feature_scoped_messages_uses_normal_system_prompt_and_scopes_output() -> None:
+    login = ParsedMaterial(filename="登入.png", kind="image", image_data_url="data:image/png;base64,A")
+    home = ParsedMaterial(filename="首頁.png", kind="image", image_data_url="data:image/png;base64,B")
+    feature = FeatureBreakdownItem(name="登入", description="登入流程", material_ids=[login.id])
+
+    messages = build_feature_scoped_messages([login, home], feature)
+
+    # 涵蓋度、不可亂猜等規則要跟一般 /generate 用同一份系統提示，不是另外發明一套。
+    assert messages[0]["content"] == SYSTEM_PROMPT
+    text = _user_text_blocks(messages)
+    assert "登入" in text
+    assert "只需要針對以下功能範圍產生測試用例" in text
+    assert "登入.png" in text
+    # 全部素材（包含不屬於這個功能的首頁.png）都要送進去，只是被要求聚焦輸出範圍，
+    # 不是只送這個功能自己的素材——見 build_feature_scoped_messages 的說明。
+    assert any(
+        block.get("type") == "text" and "【圖片：首頁.png】" in block.get("text", "")
+        for block in messages[1]["content"]
+    )

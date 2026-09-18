@@ -24,9 +24,19 @@ test('建立專案 → 新增素材 → 產生測試用例 → 匯出 Excel', as
   await expect(generateButton).toBeEnabled()
   await generateButton.click()
 
-  // 假 LLM（e2e/mock-llm/server.py）固定回傳一筆「登入成功」的測試用例。
-  // 產生按鈕會先顯示「產生中…」，實際跑完一輪 prompt 組裝＋LLM 呼叫＋
-  // 解析回應可能超過預設的 5s，這裡放寬一點等待時間。
+  // 初次產生用例先經過「功能拆分」的規劃步驟（見 FeatureBreakdownPanel）：
+  // 假 LLM（e2e/mock-llm/server.py）看到 SYSTEM_PROMPT_FEATURE_BREAKDOWN
+  // 特有的 material_filenames 欄位就會回傳一個涵蓋這份素材的功能，確認後
+  // 才會針對這個功能呼叫 /generate-scoped 真正產生用例。
+  await expect(page.getByRole('heading', { name: '確認功能拆分' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('.feature-breakdown-card')).toHaveCount(1)
+  await page.getByRole('button', { name: '確認，開始產生用例' }).click()
+
+  // 功能拆分完成後對每個功能各自呼叫一次生成（同樣走假 LLM 固定回應），
+  // 全部塵埃落定後按「完成」才會合併並提交，正式進入用例列表畫面。
+  await expect(page.getByRole('button', { name: '完成' })).toBeEnabled({ timeout: 15_000 })
+  await page.getByRole('button', { name: '完成' }).click()
+
   await expect(page.locator('.case-card')).toHaveCount(1, { timeout: 15_000 })
   await expect(page.locator('.case-card input.name-input')).toHaveValue('登入成功')
 

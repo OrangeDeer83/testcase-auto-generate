@@ -63,3 +63,14 @@ class GenerationResult(BaseModel):
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
+
+
+class FeatureBreakdownItem(BaseModel):
+    """初次產生用例前，先把選取的素材拆成功能範圍，讓使用者確認/調整過後，才針對
+    每個功能各自呼叫一次生成（見 conversations.py 的 feature_breakdown／generate_scoped）。
+    material_ids 可能跟其他功能重疊（例如共用的登入頁面），也可能只涵蓋一部分素材。"""
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    name: str
+    description: str = ""
+    material_ids: list[str] = Field(default_factory=list)
