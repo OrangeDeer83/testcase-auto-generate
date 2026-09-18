@@ -8,6 +8,7 @@
 import http.server
 import json
 import os
+import re
 
 CANNED_RESULT = {
     "test_cases": [
@@ -28,6 +29,45 @@ CANNED_RESULT = {
     ],
     "clarification_questions": [],
 }
+
+# /feature-breakdown 用的是另一份系統提示（SYSTEM_PROMPT_FEATURE_BREAKDOWN），
+# 期待的回應格式是 {"features": [...]}，不是 test_cases——固定回傳同一份
+# CANNED_RESULT 會讓 parse_feature_breakdown 找不到 "features" 欄位、拆出一份
+# 空清單，畫面卡在「確認功能拆分」（沒有任何功能可以確認）永遠不會產生用例。
+# 用 SYSTEM_PROMPT_FEATURE_BREAKDOWN 才有的欄位名稱（material_filenames）當
+# 標記，判斷這次請求是不是功能拆分；素材檔名則直接從請求內容裡的
+# 「【檔案：...】／【圖片：...】」標頭反查回來，不寫死成任何特定測試案例
+# 用的素材名稱，換一份 e2e 素材內容也不用回頭改這裡。
+_MATERIAL_HEADER_PATTERN = re.compile(r"【(?:檔案|圖片)：([^】]+)】")
+
+
+def _request_text(payload: dict) -> str:
+    parts: list[str] = []
+    for message in payload.get("messages", []):
+        content = message.get("content")
+        if isinstance(content, str):
+            parts.append(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block.get("text", ""))
+    return "\n".join(parts)
+
+
+def _canned_response_for(payload: dict) -> dict:
+    text = _request_text(payload)
+    if "material_filenames" not in text:
+        return CANNED_RESULT
+    filenames = _MATERIAL_HEADER_PATTERN.findall(text)
+    return {
+        "features": [
+            {
+                "name": "登入",
+                "description": "登入流程",
+                "material_filenames": filenames,
+            }
+        ]
+    }
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -51,12 +91,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # 整個呼叫直接失敗——這正是這個檔案改成分辨 stream 之前，CI 的
         # golden-path e2e 測試會炸掉的原因。
         try:
-            stream_requested = json.loads(body or b"{}").get("stream", False)
+            payload = json.loads(body or b"{}")
         except json.JSONDecodeError:
-            stream_requested = False
+            payload = {}
+        stream_requested = payload.get("stream", False)
+        canned = _canned_response_for(payload)
 
         if stream_requested:
-            self._send_stream()
+            self._send_stream(canned)
         else:
             self._send_json(
                 200,
@@ -70,7 +112,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "index": 0,
                             "message": {
                                 "role": "assistant",
-                                "content": json.dumps(CANNED_RESULT, ensure_ascii=False),
+                                "content": json.dumps(canned, ensure_ascii=False),
                             },
                             "finish_reason": "stop",
                         }
@@ -79,7 +121,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 },
             )
 
-    def _send_stream(self) -> None:
+    def _send_stream(self, canned: dict) -> None:
         """回傳 OpenAI 相容的串流格式（Server-Sent Events，每個事件是一個
         chat.completion.chunk），把固定回覆內容拆成幾段模擬真正串流逐字送出的
         樣子，順便讓這個假 server 也能驗證前端「即時抓取正在產生的內容」那段
@@ -89,7 +131,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
 
-        content = json.dumps(CANNED_RESULT, ensure_ascii=False)
+        content = json.dumps(canned, ensure_ascii=False)
         chunk_size = max(1, len(content) // 8)
         pieces = [content[i : i + chunk_size] for i in range(0, len(content), chunk_size)]
 
